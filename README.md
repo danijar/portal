@@ -1,6 +1,6 @@
 [![PyPI](https://img.shields.io/pypi/v/zerofun.svg)](https://pypi.python.org/pypi/zerofun/#history)
 
-# zerofun
+# 🙅 Zerofun
 
 Remote function calls for array data using [ZMQ](https://zeromq.org/).
 
