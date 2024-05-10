@@ -11,7 +11,6 @@ class Thread:
     self._exitcode = None
     self.exception = None
     name = name or fn.__name__
-    self.old_name = name[:]
     self.thread = threading.Thread(
         target=self._wrapper, args=args, name=name, daemon=True)
     self.started = False

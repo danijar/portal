@@ -18,17 +18,17 @@ class ProcServer:
     self.name = name
     self.ipv6 = ipv6
     self.server = server.Server(self.inner, name, ipv6, workers, errors)
-    self.batches = {}
+    self.batchsizes = {}
     self.batcher = None
 
   def bind(self, name, workfn, logfn=None, workers=0, batch=0):
-    self.batches[name] = batch
+    self.batchsizes[name] = batch
     self.server.bind(name, workfn, logfn, workers, batch=0)
 
   def start(self):
     self.batcher = process.StoppableProcess(
         self._batcher, self.address, self.inner,
-        self.batches, self.name, self.ipv6, name='batcher', start=True)
+        self.batchsizes, self.name, self.ipv6, name='batcher', start=True)
     self.server.start()
 
   def check(self):
@@ -59,13 +59,13 @@ class ProcServer:
     self.close()
 
   @staticmethod
-  def _batcher(context, address, inner, batches, name, ipv6):
+  def _batcher(context, address, inner, batchsizes, name, ipv6):
 
     socket = sockets.ServerSocket(address, ipv6)
     inbound = sockets.ClientSocket(identity=0, pings=0, maxage=0)
     inbound.connect(inner, timeout=120)
     queues = collections.defaultdict(list)
-    buffers = collections.defaultdict(dict)
+    buffers = {}
     pending = {}
     elements.print(f'[{name}] Listening at {address}')
 
@@ -74,7 +74,7 @@ class ProcServer:
       result = socket.receive()
       if result:
         addr, rid, name, payload = result
-        batch = batches.get(name, None)
+        batch = batchsizes.get(name, None)
         if batch is not None:
           if batch:
             queue = queues[name]
@@ -83,12 +83,14 @@ class ProcServer:
               addrs, rids, payloads = zip(*queue)
               queue.clear()
               datas = [sockets.unpack(x) for x in payloads]
-              idx = range(batch)
-              bufs = buffers[name]
-              for key, value in datas[0].items():
-                bufs[key] = np.stack(
-                    [datas[i][key] for i in idx], out=bufs.get(key, None))
-              payload = sockets.pack(bufs)
+              if name not in buffers:
+                buffers[name] = buffer = elements.tree.map(
+                    lambda *xs: np.stack(xs), *datas)
+              else:
+                buffers[name] = buffer = elements.tree.map(
+                    lambda buf, *xs: np.stack(xs, out=buf),
+                    buffers[name], *datas)
+              payload = sockets.pack(buffer)
               rid = inbound.send_call(name, payload)
               pending[rid] = (name, addrs, rids)
           else:
@@ -102,12 +104,12 @@ class ProcServer:
         if result:
           inner_rid, payload = result
           name, addr, rid = pending.pop(inner_rid)
-          if batches[name]:
+          if batchsizes[name]:
             addrs, rids = addr, rid
             result = sockets.unpack(payload)
             results = [
-                {k: v[i] for k, v in result.items()}
-                for i in range(batches[name])]
+                elements.tree.map(lambda x: x[i], result)
+                for i in range(batchsizes[name])]
             payloads = [sockets.pack(x) for x in results]
             for addr, rid, payload in zip(addrs, rids, payloads):
               socket.send_result(addr, rid, payload)
@@ -116,7 +118,7 @@ class ProcServer:
       except sockets.RemoteError as e:
         inner_rid, msg = e.args[:2]
         name, addr, rid = pending.pop(inner_rid)
-        if batches[name]:
+        if batchsizes[name]:
           addrs, rids = addr, rid
           for addr, rid in zip(addrs, rids):
             socket.send_error(addr, rid, msg)

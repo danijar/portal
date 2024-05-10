@@ -86,8 +86,6 @@ class Client:
           self.queue.popleft().result()
       except IndexError:
         pass
-    assert isinstance(data, dict)
-    data = {k: np.asarray(v) for k, v in data.items()}
     data = sockets.pack(data)
     rid = self.socket.send_call(method, data)
     self.send_per_sec.step(1)

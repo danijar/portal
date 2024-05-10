@@ -181,20 +181,20 @@ class Server:
   def _work(self, method, addr, rid, payload, recvd):
     if method.batched:
       data = [sockets.unpack(x) for x in payload]
-      data = {
-          k: np.stack([data[i][k] for i in range(method.insize)])
-          for k, v in data[0].items()}
+      data = elements.tree.map(lambda *xs: np.stack(xs), *data)
     else:
       data = sockets.unpack(payload)
     if method.donefn:
       result, logs = method.workfn(data)
     else:
       result = method.workfn(data)
-      result = result or {}
+      if result is None:
+        result = []
       logs = None
     if method.batched:
       results = [
-          {k: v[i] for k, v in result.items()} for i in range(method.insize)]
+          elements.tree.map(lambda x: x[i], result)
+          for i in range(method.insize)]
       payload = [sockets.pack(x) for x in results]
     else:
       payload = sockets.pack(result)

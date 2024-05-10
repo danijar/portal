@@ -4,8 +4,10 @@ import msgpack
 import threading
 import time
 
+import elements
 import numpy as np
 import zmq
+
 
 DEBUG = False
 # DEBUG = True
@@ -203,7 +205,8 @@ class ServerSocket:
 
   def send_result(self, addr, rid, payload):
     with self.lock:
-      self.socket.send_multipart([addr, Type.RESULT.value, rid, *payload])
+      self.socket.send_multipart(
+          [addr, Type.RESULT.value, rid, *payload], copy=False, track=True)
 
   def send_error(self, addr, rid, text):
     text = text.encode('utf-8')
@@ -216,23 +219,26 @@ class ServerSocket:
 
 
 def pack(data):
-  data = {k: np.asarray(v) for k, v in data.items()}
+  leaves, structure = elements.tree.flatten(data)
   dtypes, shapes, buffers = [], [], []
-  items = sorted(data.items(), key=lambda x: x[0])
-  keys, vals = zip(*items) if items else ((), ())
-  dtypes = [v.dtype.str for v in vals]
-  shapes = [v.shape for v in vals]
-  buffers = [v.tobytes() for v in vals]
-  meta = (keys, dtypes, shapes)
+  for value in leaves:
+    value = np.asarray(value)
+    assert value.data.c_contiguous, (
+        "Array is not contiguous in memory. Use np.asarray(arr, order='C') " +
+        "before passing the data into pack().")
+    dtypes.append(value.dtype.str)
+    shapes.append(value.shape)
+    buffers.append(value.data)
+  meta = (structure, dtypes, shapes)
   payload = [msgpack.packb(meta), *buffers]
   return payload
 
 
 def unpack(payload):
   meta, *buffers = payload
-  keys, dtypes, shapes = msgpack.unpackb(meta)
-  vals = [
+  structure, dtypes, shapes = msgpack.unpackb(meta)
+  leaves = [
       np.frombuffer(b, d).reshape(s)
       for i, (d, s, b) in enumerate(zip(dtypes, shapes, buffers))]
-  data = dict(zip(keys, vals))
+  data = elements.tree.unflatten(leaves, structure)
   return data

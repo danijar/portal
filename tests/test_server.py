@@ -6,6 +6,7 @@ import time
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
+import elements
 import numpy as np
 import pytest
 import zerofun
@@ -368,7 +369,8 @@ class TestServer:
     with server:
       client = zerofun.Client(addr, pings=0, maxage=1)
       client.connect(retry=False, timeout=1)
-      futures = [client.function({'foo': [i]}) for i in range(batch)]
+      futures = [
+          client.function({'foo': np.asarray([i])}) for i in range(batch)]
       results = [future.result()['foo'][0] for future in futures]
       assert calls[0] == 1
       assert results == list(range(batch))
@@ -446,14 +448,80 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   @pytest.mark.parametrize('addr', ADDRESSES)
-  def test_empty_dict(self, Server, addr):
+  @pytest.mark.parametrize('data', (
+      {'a': np.zeros((3, 2), np.float32), 'b': np.ones((1,), np.uint8)},
+      {'a': 12, 'b': [np.ones((1,), np.uint8), 13]},
+      {'a': 12, 'b': ['c', [1, 2, 3]]},
+      [],
+      {},
+      12,
+      [[{}, []]],
+  ))
+  def test_tree_data(self, Server, addr, data):
+    data = elements.tree.map(np.asarray, data)
+    print(data)
+    def tree_equal(tree1, tree2):
+      try:
+        comps = elements.tree.map(lambda x, y: np.all(x == y), tree1, tree2)
+        comps, _ = elements.tree.flatten(comps)
+        return all(comps)
+      except TypeError:
+        return False
     addr = addr.format(port=zerofun.get_free_port())
     client = zerofun.Client(addr, pings=0, maxage=1)
     server = Server(addr)
-    def workfn(data):
-      assert data == {}
-      return {}
+    def workfn(indata):
+      assert tree_equal(indata, data)
+      return indata
     server.bind('function', workfn)
     with server:
       client.connect(retry=False, timeout=1)
-      assert client.function({}).result() == {}
+      outdata = client.function(data).result()
+      assert tree_equal(outdata, data)
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  @pytest.mark.parametrize('addr', ADDRESSES)
+  @pytest.mark.parametrize('data', (
+      {'a': np.zeros((3, 2), np.float32), 'b': np.ones((1,), np.uint8)},
+      {'a': 12, 'b': [np.ones((1,), np.uint8), 13]},
+      {'a': 12, 'b': ['c', [1, 2, 3]]},
+      [],
+      {},
+      12,
+      [[{}, []]],
+  ))
+  def test_tree_data_batched(self, Server, addr, data):
+    data = elements.tree.map(np.asarray, data)
+    print(data)
+    def tree_equal(tree1, tree2):
+      try:
+        comps = elements.tree.map(lambda x, y: np.all(x == y), tree1, tree2)
+        comps, _ = elements.tree.flatten(comps)
+        return all(comps)
+      except TypeError:
+        return False
+    addr = addr.format(port=zerofun.get_free_port())
+    client = zerofun.Client(addr, pings=0, maxage=1)
+    server = Server(addr)
+    def workfn(indata):
+      return indata
+    server.bind('function', workfn, batch=4)
+    with server:
+      client.connect(retry=False, timeout=1)
+      futures = [client.function(data) for _ in range(4)]
+      for future in futures:
+        assert tree_equal(future.result(), data)
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  @pytest.mark.parametrize('addr', ADDRESSES)
+  def test_tree_none_result(self, Server, addr):
+    addr = addr.format(port=zerofun.get_free_port())
+    client = zerofun.Client(addr, pings=0, maxage=1)
+    server = Server(addr)
+    def workfn(indata):
+      pass  # No return value
+    server.bind('function', workfn)
+    with server:
+      client.connect(retry=False, timeout=1)
+      result = client.function([]).result()
+      assert result == []
