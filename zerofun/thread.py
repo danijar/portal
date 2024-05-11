@@ -72,8 +72,8 @@ class Thread:
   def _wrapper(self, *args):
     try:
       self.fn(*args)
-    except SystemExit:
-      return
+    except (SystemExit, KeyboardInterrupt):
+      pass
     except Exception as e:
       utils.warn_remote_error(e, self.name)
       self._exitcode = 1

@@ -96,6 +96,8 @@ class Process:
       fn = cloudpickle.loads(fn)
       fn(*args)
       sys.exit(0)
+    except (SystemExit, KeyboardInterrupt):
+      pass
     except Exception as e:
       utils.warn_remote_error(e, name, lock)
       errqueue.put(e)
