@@ -1,4 +1,3 @@
-import ctypes
 import threading
 
 from . import utils
@@ -10,7 +9,7 @@ class Thread:
     self.fn = fn
     self._exitcode = None
     self.exception = None
-    name = name or fn.__name__
+    name = name or getattr(fn, '__name__', None)
     self.thread = threading.Thread(
         target=self._wrapper, args=args, name=name, daemon=True)
     self.started = False
@@ -28,7 +27,7 @@ class Thread:
   def running(self):
     running = self.thread.is_alive()
     if running:
-      assert self.exitcode is None, self.exitcode
+      assert self.exitcode is None, (self.name, self.exitcode)
     return running
 
   @property
@@ -52,17 +51,10 @@ class Thread:
   def kill(self):
     if not self.running:
       return
-    thread = self.thread
-    if hasattr(thread, '_thread_id'):
-      thread_id = thread._thread_id
-    else:
-      thread_id = [k for k, v in threading._active.items() if v is thread][0]
-    result = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-        ctypes.c_long(thread_id), ctypes.py_object(SystemExit))
-    if result > 1:
-      ctypes.pythonapi.PyThreadState_SetAsyncExc(
-          ctypes.c_long(thread_id), None)
+    utils.kill_thread(self.thread)
     self.thread.join(0.1)
+    if self.running:
+      print(f'Thread {self.name} did not shut down yet.')
 
   def __repr__(self):
     attrs = ('name', 'ident', 'running', 'exitcode')
@@ -73,7 +65,7 @@ class Thread:
     try:
       self.fn(*args)
     except (SystemExit, KeyboardInterrupt):
-      pass
+      return
     except Exception as e:
       utils.warn_remote_error(e, self.name)
       self._exitcode = 1
