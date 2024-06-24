@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 
-import embodied
+import elements
 import numpy as np
 import psutil
 
@@ -155,7 +155,7 @@ def warn_remote_error(e, name, lock=get_print_lock):
   msg += 'Call check() to reraise in main process. '
   msg += f'Worker stack trace:\n{full}'
   with lock:
-    embodied.print(msg, color='red')
+    elements.print(msg, color='red')
   if hasattr(e, 'add_note'):
     e.add_note(f'\nWorker stack trace:\n\n{full}')
 

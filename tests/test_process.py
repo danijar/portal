@@ -20,7 +20,6 @@ class TestProcess:
     assert worker.running
     worker.kill()
     assert not worker.running
-    worker.join()  # Noop
 
   def test_stop(self):
     def fn(context, q):
