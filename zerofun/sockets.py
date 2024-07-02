@@ -223,6 +223,8 @@ def pack(data):
   dtypes, shapes, buffers = [], [], []
   for value in leaves:
     value = np.asarray(value)
+    if value.dtype == object:
+      raise TypeError(data)
     assert value.data.c_contiguous, (
         "Array is not contiguous in memory. Use np.asarray(arr, order='C') " +
         "before passing the data into pack().")
