@@ -1,10 +1,6 @@
-import pathlib
 import queue
-import sys
 import time
 import traceback
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 import pytest
 import zerofun
@@ -46,6 +42,7 @@ class TestThread:
   def test_exception(self):
     def fn1234(q):
       q.put(42)
+      time.sleep(0.01)
       raise KeyError('foo')
     q = queue.SimpleQueue()
     worker = zerofun.Thread(fn1234, q, start=True)

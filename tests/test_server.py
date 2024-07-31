@@ -1,10 +1,6 @@
-import pathlib
 import queue
-import sys
 import threading
 import time
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 import elements
 import numpy as np

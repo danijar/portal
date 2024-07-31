@@ -1,10 +1,7 @@
 import multiprocessing as mp
-import pathlib
 import sys
 import time
 import traceback
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 import pytest
 import zerofun
