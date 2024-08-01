@@ -78,6 +78,7 @@ class TestProcess:
     assert zerofun.proc_alive(parent.pid)
     assert zerofun.proc_alive(child_pid)
     parent.kill()
+    time.sleep(0.01)
     assert not zerofun.proc_alive(parent.pid)
     assert not zerofun.proc_alive(child_pid)
 
@@ -101,5 +102,6 @@ class TestProcess:
         parent.check()
         time.sleep(0.1)
     assert repr(info.value) == "KeyError('foo')"
+    time.sleep(0.01)
     assert not zerofun.proc_alive(parent.pid)
     assert not zerofun.proc_alive(child_pid)
