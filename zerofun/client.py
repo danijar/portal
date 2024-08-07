@@ -98,13 +98,13 @@ class Client:
   def close(self):
     return self.socket.close()
 
-  @elements.timer.section('client_receive')
   def _receive(self, rid, retry):
-    while rid in self.futures and not self.futures[rid].done():
-      result = self._listen()
-      if result is None and not retry:
-        return
-      time.sleep(0.0001)
+    with elements.timer.section(f'client_{self.name.lower()}_receive'):
+      while rid in self.futures and not self.futures[rid].done():
+        result = self._listen()
+        if result is None and not retry:
+          return
+        time.sleep(0.0001)
 
   @elements.timer.section('client_listen')
   def _listen(self):
