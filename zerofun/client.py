@@ -17,6 +17,7 @@ class Client:
       self, address, name='Client', ipv6=False, identity=None,
       pings=10, maxage=120, maxinflight=16, errors=True,
       connect=False):
+    assert isinstance(name, str)
     if identity is None:
       identity = int(np.random.randint(2 ** 32))
     self.address = address
@@ -52,9 +53,13 @@ class Client:
 
   @elements.timer.section('client_connect')
   def connect(self, retry=True, timeout=10):
+    msg1 = False
+    msg2 = False
     while True:
       self.resolved = self._resolve(self.address)
-      self._print(f'Connecting to {self.resolved}')
+      if not msg1:
+        msg1 = True
+        self._print(f'Connecting to {self.resolved}')
       try:
         self.socket.connect(self.resolved, timeout)
         self._print('Connection established')
@@ -63,7 +68,9 @@ class Client:
       except sockets.ProtocolError as e:
         self._print(f'Ignoring unexpected message: {e}')
       except sockets.ConnectError:
-        pass
+        if not msg2:
+          msg2 = True
+          self._print('--- Could not connect yet and will retry forever ---')
       if retry:
         continue
       else:
@@ -99,7 +106,7 @@ class Client:
     return self.socket.close()
 
   def _receive(self, rid, retry):
-    with elements.timer.section(f'client_{self.name.lower()}_receive'):
+    with elements.timer.section(f'{self.name}_client_receive'):
       while rid in self.futures and not self.futures[rid].done():
         result = self._listen()
         if result is None and not retry:

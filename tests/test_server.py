@@ -45,7 +45,7 @@ class TestServer:
     with server:
       clients = []
       for i in range(10):
-        client = zerofun.Client(addr, i, pings=0, maxage=1)
+        client = zerofun.Client(addr, str(i), pings=0, maxage=1)
         client.connect()
         clients.append(client)
       futures = [
@@ -95,7 +95,7 @@ class TestServer:
     server = Server(addr)
     server.bind('function', lambda data: data)
     with server:
-      client = zerofun.Client(addr, 0, pings=0, maxage=1)
+      client = zerofun.Client(addr, pings=0, maxage=1)
       client.connect(retry=False, timeout=1)
       future1 = client.function({'foo': 1})
       future2 = client.function({'foo': 2})
@@ -112,7 +112,7 @@ class TestServer:
     server.bind('function', lambda data: data)
     with server:
       client = zerofun.Client(
-          addr, 0, pings=0, maxage=1, maxinflight=None, errors=False)
+          addr, pings=0, maxage=1, maxinflight=None, errors=False)
       client.connect(retry=False, timeout=1)
       client.function({'foo': 1})
       client.function({'foo': 2})
@@ -141,7 +141,7 @@ class TestServer:
 
     with server:
       client = zerofun.Client(
-          addr, 0, pings=0, maxage=1, maxinflight=2)
+          addr, pings=0, maxage=1, maxinflight=2)
       client.connect(retry=False, timeout=1)
       futures = [client.function({'foo': i}) for i in range(4)]
       results = [future.result()['foo'] for future in futures]
@@ -154,7 +154,7 @@ class TestServer:
     server = Server(addr)
     server.bind('function', lambda data: data)
     with server:
-      client = zerofun.Client(addr, 0, pings=0, maxage=1, errors=True)
+      client = zerofun.Client(addr, pings=0, maxage=1, errors=True)
       client.connect(retry=False, timeout=1)
       client.function({'foo': 1})
       client.function({'foo': 2})
