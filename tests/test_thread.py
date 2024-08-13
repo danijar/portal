@@ -46,9 +46,8 @@ class TestThread:
       raise KeyError('foo')
     q = queue.SimpleQueue()
     worker = zerofun.Thread(fn1234, q, start=True)
-    time.sleep(0.01)
     q.get()
-    time.sleep(0.01)
+    time.sleep(0.1)
     assert not worker.running
     assert worker.exitcode == 1
     with pytest.raises(KeyError) as info:

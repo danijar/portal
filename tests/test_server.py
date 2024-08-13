@@ -192,7 +192,7 @@ class TestServer:
     server = Server(addr)
     server.bind('function', slow)
     with server:
-      client = zerofun.Client(addr, pings=0.1, maxage=0.01)
+      client = zerofun.Client(addr, pings=0.1, maxage=0.01, reconnect=False)
       client.connect()
       with pytest.raises(zerofun.NotAliveError):
         client.function({'foo': 0}).result()

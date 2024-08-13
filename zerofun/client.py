@@ -16,7 +16,7 @@ class Client:
   def __init__(
       self, address, name='Client', ipv6=False, identity=None,
       pings=10, maxage=120, maxinflight=16, errors=True,
-      connect=False):
+      connect=False, reconnect=True):
     assert isinstance(name, str)
     if identity is None:
       identity = int(np.random.randint(2 ** 32))
@@ -25,6 +25,7 @@ class Client:
     self.name = name
     self.maxinflight = maxinflight
     self.errors = errors
+    self.reconnect = reconnect
     self.resolved = None
     self.socket = sockets.ClientSocket(identity, ipv6, pings, maxage)
     self.futures = weakref.WeakValueDictionary()
@@ -124,8 +125,11 @@ class Client:
         self.recv_per_sec.step(1)
       return result
     except sockets.NotAliveError:
-      self._print('Server is not responding')
-      raise
+      self._print('Lost connection to server')
+      if self.reconnect:
+        self.connect()
+      else:
+        raise
     except sockets.RemoteError as e:
       self._print(f'Received error response: {e.args[1]}')
       other = e.args[0]
