@@ -33,7 +33,12 @@ class Client:
     self.conn_per_sec = elements.FPS()
     self.send_per_sec = elements.FPS()
     self.recv_per_sec = elements.FPS()
+    self._connected = False
     connect and self.connect()
+
+  @property
+  def connected(self):
+    return self._connected
 
   def __getattr__(self, name):
     if name.startswith('__'):
@@ -65,6 +70,7 @@ class Client:
         self.socket.connect(self.resolved, timeout)
         self._print('Connection established')
         self.conn_per_sec.step(1)
+        self._connected = True
         return
       except sockets.ProtocolError as e:
         self._print(f'Ignoring unexpected message: {e}')
@@ -125,6 +131,7 @@ class Client:
         self.recv_per_sec.step(1)
       return result
     except sockets.NotAliveError:
+      self._connected = False
       self._print('Lost connection to server')
       if self.reconnect:
         self.connect()
