@@ -37,8 +37,8 @@ class ClientSocket:
     self.maxage = maxage
     self.connected = False
     self.last_call = float('-inf')
+    self.last_ping = float('-inf')
     self.last_response = float('-inf')
-    self.last_pinged = float('-inf')
     self.addr = None
     self.rid = iter(itertools.count(0))
     self.running = True
@@ -54,7 +54,9 @@ class ClientSocket:
       start = time.time()
       while True:
         try:
-          parts = self.socket.recv_multipart(zmq.NOBLOCK, copy=False)
+          with self.lock:
+            parts = self.socket.recv_multipart(zmq.NOBLOCK, copy=False)
+          self.last_response = time.time()
           typ, rid2, *args = [x.buffer for x in parts]
           if typ == Type.PONG.value and rid == rid2:
             self.connected = True
@@ -86,19 +88,19 @@ class ClientSocket:
 
       # This is the time since the last response or if the server is not
       # responding, since the last ping so that we can try again.
-      last_ping_or_resp = max(self.last_response, self.last_pinged)
+      last_ping_or_resp = max(self.last_response, self.last_ping)
       if self.pings and now - last_ping_or_resp >= self.pings:
-        self.last_pinged = now
+        self.last_ping = now
         self.send_ping()
 
       # This is the time since the last call, unless the server sent back
-      # anything in the meantime to keep the connection alive.
+      # something in the meantime to keep the connection alive.
       last_call_or_resp = max(self.last_call, self.last_response)
       if self.maxage and now - last_call_or_resp >= self.maxage:
         raise NotAliveError(
             f'\nlast call:     {now - self.last_call:.3f}s ago'
             f'\nlast response: {now - self.last_response:.3f}s ago'
-            f'\nlast pinged:   {now - self.last_pinged:.3f}s ago'
+            f'\nlast pinged:   {now - self.last_ping:.3f}s ago'
         )
       return None
 
