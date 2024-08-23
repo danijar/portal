@@ -11,11 +11,8 @@ from .thread import Thread
 from .process import Process
 from .utils import run
 
-from .utils import context
 from .utils import setup
-from .utils import error
-from .utils import shutdown
-from .utils import initfn
+from .utils import context
 from .utils import kill_proc
 from .utils import kill_thread
 from .utils import free_port

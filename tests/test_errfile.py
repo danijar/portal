@@ -13,7 +13,7 @@ class TestErrfile:
     try:
       raise ValueError
     except Exception as e:
-      zerofun.error(e, 'worker')
+      zerofun.context().error(e, 'worker')
     content = errfile.read_text()
     assert "Error in 'worker' (ValueError):" == content.split('\n')[0]
     assert 'Traceback (most recent call last)' in content

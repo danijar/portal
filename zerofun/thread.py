@@ -58,8 +58,10 @@ class Thread:
       exitcode = exitcode if isinstance(exitcode, int) else 0
       self.excode = exitcode
     except (SystemExit, KeyboardInterrupt):
+      [x.kill(0.1) for x in utils.children(self.ident)]
       self.excode = 2
     except Exception as e:
       [x.kill(0.1) for x in utils.children(self.ident)]
-      utils.error(e, self.name)
+      utils.context().error(e, self.name)
+      utils.context().shutdown(1)
       self.excode = 1

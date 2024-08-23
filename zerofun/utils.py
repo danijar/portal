@@ -19,24 +19,17 @@ CONTEXT = None
 
 CHILDREN = collections.defaultdict(list)
 
-def setup(errfile=None, check_interval=20):
+def setup(errfile=None, check_interval=20, initfns=[]):
   global CONTEXT
   CONTEXT = Context(errfile, check_interval)
+  for initfn in initfns:
+    CONTEXT.initfn(initfn)
 
 def context():
   global CONTEXT
   if not CONTEXT:
     CONTEXT = Context(None)
   return CONTEXT
-
-def error(e, name=None):
-  context().error(e, name)
-
-def shutdown(exitcode):
-  context().shutdown(exitcode)
-
-def initfn(fn):
-  context().initfn(fn)
 
 def child(worker):
   global CHILDREN
@@ -105,12 +98,15 @@ class Context:
       kill_thread(self.watcher)
 
   def _watcher(self):
-    while True:
-      time.sleep(self.check_interval)
-      if self.errfile and self.errfile.exists():
-        print('Detected error file thus shutting down:')
-        print(self.errfile.read_text())
-        self.shutdown(2)
+    try:
+      while True:
+        time.sleep(self.check_interval)
+        if self.errfile and self.errfile.exists():
+          print('Detected error file thus shutting down:')
+          print(self.errfile.read_text())
+          self.shutdown(2)
+    except (SystemExit, KeyboardInterrupt):
+      pass
 
 
 def run(workers, duration=None):
@@ -172,7 +168,6 @@ def kill_proc(procs, timeout=3):
   procs = list(set(procs))
   # Send SIGINT to attempt graceful shutdown.
   eachproc(lambda p: p.terminate(), procs)
-  time.sleep(1)
   _, procs = psutil.wait_procs(procs, timeout)
   # Send SIGTERM to remaining processes to force exit.
   eachproc(lambda p: p.kill(), procs)

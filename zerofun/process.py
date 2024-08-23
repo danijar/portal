@@ -80,7 +80,7 @@ class Process:
     except (SystemExit, KeyboardInterrupt):
       exitcode = 2
     except Exception as e:
-      utils.error(e, name)
+      utils.context().error(e, name)
       exitcode = 1
     finally:
-      utils.shutdown(exitcode)
+      utils.context().shutdown(exitcode)

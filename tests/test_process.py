@@ -39,7 +39,7 @@ class TestProcess:
   def test_kill(self):
     def fn():
       while True:
-        time.sleep(1)
+        time.sleep(0.1)
     worker = zerofun.Process(fn, start=True)
     worker.kill()
     assert not worker.running
@@ -82,10 +82,11 @@ class TestProcess:
     assert worker.exitcode == 2
 
   def test_initfn(self):
-    ready = zerofun.context().mp.Event()
+    zerofun.setup()
     def initfn():
       zerofun.foo = 42
-    zerofun.initfn(initfn)
+    zerofun.context().initfn(initfn)
+    ready = zerofun.context().mp.Event()
     assert zerofun.foo == 42
     def outer(ready):
       assert zerofun.foo == 42
@@ -96,3 +97,4 @@ class TestProcess:
     zerofun.Process(outer, ready, start=True).join()
     ready.wait()
     assert ready.is_set()
+    zerofun.context().close()
