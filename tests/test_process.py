@@ -1,7 +1,4 @@
-import multiprocessing as mp
-import sys
 import time
-import traceback
 
 import pytest
 import zerofun
@@ -9,99 +6,93 @@ import zerofun
 
 class TestProcess:
 
+  def test_exitcode(self):
+    worker = zerofun.Process(lambda: None, start=True)
+    worker.join()
+    assert worker.exitcode == 0
+    worker = zerofun.Process(lambda: 42, start=True)
+    worker.join()
+    assert worker.exitcode == 42
+
+  def test_error(self):
+    def fn():
+      raise KeyError('foo')
+    worker = zerofun.Process(fn, start=True)
+    worker.join()
+    assert not worker.running
+    assert worker.exitcode == 1
+
+  def test_error_with_children(self):
+    def hang():
+      while True:
+        time.sleep(0.1)
+    def fn():
+      zerofun.Process(hang, start=True)
+      zerofun.Thread(hang, start=True)
+      time.sleep(0.1)
+      raise KeyError('foo')
+    worker = zerofun.Process(fn, start=True)
+    worker.join()
+    assert not worker.running
+    assert worker.exitcode == 1
+
   def test_kill(self):
     def fn():
       while True:
-        time.sleep(0.01)
+        time.sleep(1)
     worker = zerofun.Process(fn, start=True)
-    assert worker.running
     worker.kill()
     assert not worker.running
+    assert worker.exitcode == 2
 
-  def test_stop(self):
-    def fn(context, q):
-      q.put('start')
-      while context.running:
-        time.sleep(0.01)
-      q.put('stop')
-    q = mp.get_context().SimpleQueue()
-    worker = zerofun.StoppableProcess(fn, q)
-    worker.start()
-    worker.stop()
-    assert q.get() == 'start'
-    assert q.get() == 'stop'
-
-  def test_exitcode(self):
-    worker = zerofun.Process(lambda: None)
-    assert worker.exitcode is None
-    worker.start()
-    worker.join()
-    assert worker.exitcode == 0
-
-  def test_exception(self):
-    def fn1234(q):
-      q.put(42)
-      raise KeyError('foo')
-    q = mp.get_context().SimpleQueue()
-    worker = zerofun.Process(fn1234, q, start=True)
-    q.get()
-    time.sleep(0.1)
-    assert not worker.running
-    assert worker.exitcode == 1
-    with pytest.raises(KeyError) as info:
-      worker.check()
-    worker.kill()  # Shoud not hang or reraise.
-    with pytest.raises(KeyError) as info:
-      worker.check()  # Can reraise multiple times.
-    assert repr(info.value) == "KeyError('foo')"
-    e = info.value
-    typ, tb = type(e), e.__traceback__
-    tb = ''.join(traceback.format_exception(typ, e, tb))
-    assert "KeyError: 'foo'" in tb
-    if sys.version_info.minor >= 11:
-      assert 'Traceback' in tb
-      assert ' File ' in tb
-      assert 'fn1234' in tb
-
-  def test_nested_kill(self):
-    q = mp.get_context().SimpleQueue()
-    def inner():
+  @pytest.mark.parametrize('repeat', range(5))
+  def test_kill_with_subproc(self, repeat):
+    ready = zerofun.context().mp.Semaphore(0)
+    def outer(ready):
+      zerofun.Process(inner, ready, start=True)
+      ready.release()
       while True:
-        time.sleep(0.01)
-    def outer(q):
-      child = zerofun.Process(inner, start=True)
-      q.put(child.pid)
-      while True:
-        time.sleep(0.01)
-    parent = zerofun.Process(outer, q, start=True)
-    child_pid = q.get()
-    assert zerofun.proc_alive(parent.pid)
-    assert zerofun.proc_alive(child_pid)
-    parent.kill()
-    time.sleep(0.01)
-    assert not zerofun.proc_alive(parent.pid)
-    assert not zerofun.proc_alive(child_pid)
-
-  def test_nested_exception(self):
-    q = mp.get_context().SimpleQueue()
-    def inner():
-      time.sleep(0.1)
-      raise KeyError('foo')
-    def outer(q):
-      child = zerofun.Process(inner, start=True)
-      q.put(child.pid)
-      while True:
-        child.check()
-        time.sleep(0.01)
-    parent = zerofun.Process(outer, q, start=True)
-    child_pid = q.get()
-    assert zerofun.proc_alive(parent.pid)
-    assert zerofun.proc_alive(child_pid)
-    with pytest.raises(KeyError) as info:
-      while True:
-        parent.check()
         time.sleep(0.1)
-    assert repr(info.value) == "KeyError('foo')"
-    time.sleep(0.01)
-    assert not zerofun.proc_alive(parent.pid)
-    assert not zerofun.proc_alive(child_pid)
+    def inner(ready):
+      ready.release()
+      while True:
+        time.sleep(0.1)
+    worker = zerofun.Process(outer, ready, start=True)
+    ready.acquire()
+    ready.acquire()
+    worker.kill()
+    assert not worker.running
+    assert worker.exitcode == 2
+
+  @pytest.mark.parametrize('repeat', range(5))
+  def test_kill_with_subthread(self, repeat):
+    ready = zerofun.context().mp.Event()
+    def outer(ready):
+      zerofun.Thread(inner, ready, start=True)
+      while True:
+        time.sleep(0.1)
+    def inner(ready):
+      ready.set()
+      while True:
+        time.sleep(0.1)
+    worker = zerofun.Process(outer, ready, start=True)
+    ready.wait()
+    worker.kill()
+    assert not worker.running
+    assert worker.exitcode == 2
+
+  def test_initfn(self):
+    ready = zerofun.context().mp.Event()
+    def initfn():
+      zerofun.foo = 42
+    zerofun.initfn(initfn)
+    assert zerofun.foo == 42
+    def outer(ready):
+      assert zerofun.foo == 42
+      zerofun.Process(inner, ready, start=True).join()
+    def inner(ready):
+      assert zerofun.foo == 42
+      ready.set()
+    zerofun.Process(outer, ready, start=True).join()
+    ready.wait()
+    assert ready.is_set()

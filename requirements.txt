@@ -1,5 +1,5 @@
 cloudpickle
-elements>=3.3.0
+elements
 msgpack
 numpy
 psutil

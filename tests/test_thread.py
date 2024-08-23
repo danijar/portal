@@ -1,6 +1,4 @@
-import queue
 import time
-import traceback
 
 import pytest
 import zerofun
@@ -8,78 +6,84 @@ import zerofun
 
 class TestThread:
 
+  def test_exitcode(self):
+    worker = zerofun.Thread(lambda: None, start=True)
+    worker.join()
+    assert worker.exitcode == 0
+    worker = zerofun.Thread(lambda: 42, start=True)
+    worker.join()
+    assert worker.exitcode == 42
+
+  def test_error(self):
+    def fn():
+      raise KeyError('foo')
+    worker = zerofun.Thread(fn, start=True)
+    worker.join(1)
+    assert not worker.running
+    assert worker.exitcode == 1
+
   def test_kill(self):
     def fn():
       while True:
-        time.sleep(0.01)
+        time.sleep(1)
     worker = zerofun.Thread(fn, start=True)
     worker.kill()
     assert not worker.running
-    worker.join()
-    assert not worker.running
-    worker.join()  # Noop
+    assert worker.exitcode == 2
 
-  def test_stop(self):
-    def fn(context, q):
-      q.put('start')
-      while context.running:
-        time.sleep(0.01)
-      q.put('stop')
-    q = queue.SimpleQueue()
-    worker = zerofun.StoppableThread(fn, q)
-    worker.start()
-    worker.stop()
-    assert q.get() == 'start'
-    assert q.get() == 'stop'
-
-  def test_exitcode(self):
-    worker = zerofun.Thread(lambda: None)
-    assert worker.exitcode is None
-    worker.start()
-    worker.join()
-    assert worker.exitcode == 0
-
-  def test_exception(self):
-    def fn1234(q):
-      q.put(42)
-      time.sleep(0.01)
+  def test_error_with_children(self):
+    def hang():
+      while True:
+        time.sleep(0.1)
+    children = []
+    def fn():
+      children.append(zerofun.Process(hang, start=True))
+      children.append(zerofun.Thread(hang, start=True))
+      time.sleep(0.1)
       raise KeyError('foo')
-    q = queue.SimpleQueue()
-    worker = zerofun.Thread(fn1234, q, start=True)
-    q.get()
-    time.sleep(0.1)
+    worker = zerofun.Thread(fn, start=True)
+    worker.join()
     assert not worker.running
     assert worker.exitcode == 1
-    with pytest.raises(KeyError) as info:
-      worker.check()
-    worker.kill()  # Shoud not hang or reraise.
-    with pytest.raises(KeyError) as info:
-      worker.check()  # Can reraise multiple times.
-    assert repr(info.value) == "KeyError('foo')"
-    e = info.value
-    typ, tb = type(e), e.__traceback__
-    tb = ''.join(traceback.format_exception(typ, e, tb))
-    assert 'Traceback' in tb
-    assert ' File ' in tb
-    assert 'fn1234' in tb
-    assert "KeyError: 'foo'" in tb
+    assert not children[0].running
+    assert not children[1].running
 
-  def test_nested_exception(self):
-    threads = []
-    def inner():
-      raise KeyError('foo')
+  @pytest.mark.parametrize('repeat', range(5))
+  def test_kill_with_subthread(self, repeat):
+    flag = [False]
     def outer():
-      child = zerofun.Thread(inner, start=True)
-      threads.append(child)
+      zerofun.Thread(inner, start=True)
       while True:
-        child.check()
-        time.sleep(0.01)
-    parent = zerofun.Thread(outer)
-    threads.append(parent)
-    parent.start()
-    time.sleep(0.1)
-    with pytest.raises(KeyError) as info:
-      parent.check()
-    assert repr(info.value) == "KeyError('foo')"
-    assert not threads[0].running
-    assert not threads[1].running
+        time.sleep(0.1)
+    def inner():
+      try:
+        while True:
+          time.sleep(0.1)
+      except SystemExit:
+        flag[0] = True
+        raise
+    worker = zerofun.Thread(outer, start=True)
+    worker.kill()
+    assert not worker.running
+    assert worker.exitcode == 2
+    assert flag[0] is True
+
+  @pytest.mark.parametrize('repeat', range(5))
+  def test_kill_with_subproc(self, repeat):
+    ready = zerofun.context().mp.Event()
+    proc = [None]
+    def outer():
+      proc[0] = zerofun.Process(inner, ready, start=True)
+      while True:
+        time.sleep(0.1)
+    def inner(ready):
+      ready.set()
+      while True:
+        time.sleep(0.1)
+    worker = zerofun.Thread(outer, start=True)
+    ready.wait()
+    worker.kill()
+    assert not worker.running
+    assert not proc[0].running
+    assert worker.exitcode == 2
+    assert proc[0].exitcode == 2
