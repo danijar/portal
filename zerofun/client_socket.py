@@ -101,7 +101,7 @@ class ClientSocket:
       raise DisconnectedError
 
   def _loop(self):
-    recvbuf = buffers.RecvBuffer(self.options.max_msg_size)
+    recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     while self.running:
       self.isconnected.wait()
       try:
@@ -110,10 +110,10 @@ class ClientSocket:
           if not size:
             raise OSError('received zero bytes')
           if recvbuf.done():
-            if len(self.received) > self.options.max_recv_queue:
+            if self.received.qsize() > self.options.max_recv_queue:
               raise RuntimeError('Too many incoming messages enqueued')
-            self.received.append(recvbuf.result())
-            recvbuf = buffers.RecvBuffer()
+            self.received.put(recvbuf.result())
+            recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
         if self.sending:
           first = self.sending[0]
           try:

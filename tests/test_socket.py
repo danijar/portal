@@ -1,5 +1,3 @@
-import time
-
 import zerofun
 
 
@@ -14,3 +12,7 @@ class TestSocket:
     addr, data = server.recv()
     assert addr[0] == '127.0.0.1'
     assert data == b'foo'
+    server.send(addr, b'bar')
+    assert client.recv() == b'bar'
+    server.close()
+    client.close()
