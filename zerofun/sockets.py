@@ -1,6 +1,5 @@
 import enum
 import itertools
-import msgpack
 import threading
 import time
 

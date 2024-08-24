@@ -21,9 +21,10 @@ CHILDREN = collections.defaultdict(list)
 
 def setup(errfile=None, check_interval=20, initfns=[]):
   global CONTEXT
+  if CONTEXT:
+    CONTEXT.close()
   CONTEXT = Context(errfile, check_interval)
-  for initfn in initfns:
-    CONTEXT.initfn(initfn)
+  [CONTEXT.initfn(x) for x in initfns]
 
 def context():
   global CONTEXT
@@ -44,12 +45,14 @@ def children(ident):
 
 class Context:
 
-  def __init__(self, errfile=None, check_interval=20):
+  def __init__(self, errfile=None, check_interval=20, resolver=None):
     if errfile and isinstance(errfile, str):
       errfile = pathlib.Path(errfile)
     self.mp = mp.get_context()
     self.errfile = errfile
     self.check_interval = check_interval
+    self.resolver_bin = cloudpickle.dumps(resolver or (lambda x: x))
+    self.resolver = None
     self.printlock = self.mp.Lock()
     self.initfns = []
     self.watcher = None
@@ -57,10 +60,20 @@ class Context:
     self.start()
 
   def __getstate__(self):
-    return (self.errfile, self.check_interval, self.printlock, self.initfns)
+    return {
+        'errfile': self.errfile,
+        'check_interval': self.check_interval,
+        'printlock': self.printlock,
+        'initfns': self.initfns,
+        'resolver_bin': self.resolver_bin,
+    }
 
-  def __setstate__(self, x):
-    self.errfile, self.check_interval, self.printlock, self.initfns = x
+  def __setstate__(self, d):
+    self.errfile = d['errfile']
+    self.check_interval = d['check_interval']
+    self.printlock = d['printlock']
+    self.initfns = d['initfns']
+    self.resolver_bin = d['resolver_bin']
     self.mp = mp.get_context()
     self.started = False
 
@@ -74,6 +87,7 @@ class Context:
     self.started = True
     initfns = [cloudpickle.loads(x) for x in self.initfns]
     [x() for x in initfns]
+    self.resolver = cloudpickle.loads(self.resolver_bin)
     if self.errfile:
       self.watcher = threading.Thread(target=self._watcher, daemon=True)
       self.watcher.start()

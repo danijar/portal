@@ -36,16 +36,19 @@ class Thread:
     assert not self.started
     self.started = True
     self.thread.start()
+    return self
 
   def join(self, timeout=None):
     if self.running:
       self.thread.join(timeout)
+    return self
 
   def kill(self, timeout=3):
     start = time.time()
     children = utils.children(self.ident)
     [x.kill(max(0.1, timeout - (time.time() - start))) for x in children]
     utils.kill_thread(self.thread, max(0.1, timeout - (time.time() - start)))
+    return self
 
   def __repr__(self):
     attrs = ('name', 'ident', 'running', 'exitcode')

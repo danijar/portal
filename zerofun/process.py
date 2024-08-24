@@ -29,8 +29,6 @@ class Process:
 
   @property
   def running(self):
-    # if not self.process.is_alive():
-    #   return False
     try:
       alive = self.psutil.status() != psutil.STATUS_ZOMBIE
       return self.psutil.is_running() and alive
@@ -52,16 +50,19 @@ class Process:
     self.process.start()
     assert self.pid is not None
     self.psutil = psutil.Process(self.pid)
+    return self
 
   def join(self, timeout=None):
     if self.running:
       self.process.join(timeout)
+    return self
 
   def kill(self, timeout=3):
     start = time.time()
     self.process.terminate()
     utils.kill_proc(self.pid, timeout)
     self.process.join(max(0, timeout - (time.time() - start)))
+    return self
 
   def __repr__(self):
     attrs = ('name', 'pid', 'running', 'exitcode')

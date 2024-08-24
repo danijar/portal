@@ -19,6 +19,9 @@ from .utils import free_port
 from .utils import pack
 from .utils import unpack
 
+from .server_socket import ServerSocket
+from .client_socket import ClientSocket
+
 from .server import Server
 from .proc_server import ProcServer
 from .sockets import NotAliveError, RemoteError, ProtocolError
