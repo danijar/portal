@@ -128,6 +128,9 @@ class ClientSocket:
         continue
 
   def _setup(self, sock, options):
+
+    return  # TODO
+
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     tcp = socket.IPPROTO_TCP
     if sys.platform == 'darwin':
@@ -138,6 +141,7 @@ class ClientSocket:
       sock.setsockopt(tcp, socket.TCP_KEEPINTVL, options.keepalive_every)
       sock.setsockopt(tcp, socket.TCP_KEEPCNT, options.keepalive_maxfails)
 
-  def _log(self, *args, **kwargs):
+  def _log(self, *args):
     if self.options.debug:
-      print(*args, **kwargs)
+      import elements
+      elements.print('[Client]', *args, color='yellow', bold=True)

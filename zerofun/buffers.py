@@ -4,46 +4,47 @@ import os
 class SendBuffer:
 
   def __init__(self, *buffers, maxsize=None):
-    self.length = sum(len(x) for x in buffers)
-    assert not maxsize or self.length <= self.length, (self.length, maxsize)
-    length = self.length.to_bytes(4, 'little', signed=False)
-    self.buffers = [length, *buffers]
+    length = sum(len(x) for x in buffers)
+    assert all(len(x) for x in buffers)
+    assert 1 <= length, length
+    assert not maxsize or length <= length, (length, maxsize)
+    lenbuf = length.to_bytes(4, 'little', signed=False)
+    self.buffers = [lenbuf, *buffers]
     self.pos = 0
 
   def send(self, sock):
-    size = os.writev(sock.fileno(), self.buffers)
-    self.pos += size
+    first, *others = self.buffers
+    size = os.writev(sock.fileno(), [memoryview(first)[self.pos:], *others])
+    assert 0 <= size, size
+    self.pos += max(0, size)
     while self.buffers and self.pos >= len(self.buffers[0]):
       self.pos -= len(self.buffers.pop(0))
     return size
 
   def done(self):
-    return self.pos == self.length
+    return not self.buffers
 
 
 class RecvBuffer:
 
   def __init__(self, maxsize):
     self.maxsize = maxsize
-    self.length = bytearray(4)
+    self.lenbuf = bytearray(4)
     self.buffer = None
     self.pos = 0
 
   def recv(self, sock):
     if self.buffer is None:
-      size = sock.recv_into(self.length[self.pos:])
-      self.pos += size
+      size = sock.recv_into(memoryview(self.lenbuf)[self.pos:])
+      self.pos += max(0, size)
       if self.pos == 4:
-        length = int.from_bytes(self.length, 'little', signed=False)
-
-        # assert 0 < length <= self.maxsize, (length, self.maxsize)
-        assert length <= self.maxsize, (length, self.maxsize)  # TODO
-
+        length = int.from_bytes(self.lenbuf, 'little', signed=False)
+        assert 0 < length <= self.maxsize, (length, self.maxsize)
         self.buffer = bytearray(length)
         self.pos = 0
     else:
-      size = sock.recv_into(self.buffer[self.pos:])
-      self.pos += size
+      size = sock.recv_into(memoryview(self.buffer)[self.pos:])
+      self.pos += max(0, size)
     return size
 
   def done(self):

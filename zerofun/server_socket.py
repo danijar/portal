@@ -9,6 +9,17 @@ from . import buffers
 from . import thread
 
 
+class Connection:
+
+  def __init__(self, sock, addr):
+    self.sock = sock
+    self.addr = addr
+    self.recvbuf = None
+
+  def fileno(self):
+    return self.sock.fileno()
+
+
 @dataclasses.dataclass
 class Options:
 
@@ -97,9 +108,8 @@ class ServerSocket:
       if self.received.qsize() > self.options.max_recv_queue:
         raise RuntimeError('Too many incoming messages enqueued')
       self.received.put((conn.addr, conn.recvbuf.result()))
-      self.condition.notify()
       conn.recvbuf = None
-    if not size:
+    if size == 0:
       self._log(f'Closing connection to {conn.addr}')
       self.sel.unregister(conn.sock)
       del self.conns[conn.addr]
@@ -107,15 +117,5 @@ class ServerSocket:
 
   def _log(self, *args, **kwargs):
     if self.options.debug:
-      print(*args, **kwargs)
-
-
-class Connection:
-
-  def __init__(self, sock, addr):
-    self.sock = sock
-    self.addr = addr
-    self.recvbuf = None
-
-  def fileno(self):
-    return self.sock.fileno()
+      import elements
+      elements.print('[Server]', *args, color='blue', bold=True)
