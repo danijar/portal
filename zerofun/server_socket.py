@@ -59,9 +59,11 @@ class ServerSocket:
     return tuple(self.conns.keys())
 
   def recv(self, timeout=None):
+    assert self.running
     return self.received.get(block=(timeout != 0), timeout=timeout)
 
   def send(self, addr, *data):
+    assert self.running
     if len(self.sending) > self.options.max_send_queue:
       raise RuntimeError('Too many outgoing messages enqueued')
     maxsize = self.options.max_msg_size
@@ -70,12 +72,13 @@ class ServerSocket:
   def close(self):
     self.running = False
     self.thread.join()
+    [conn.sock.close() for conn in self.conns.values()]
     self.sock.close()
     self.sel.close()
 
   def _loop(self):
     while self.running:
-      for reader, _ in self.sel.select(timeout=1):
+      for reader, _ in self.sel.select(timeout=0.01):
         if reader.data is None:
           self._accept(reader.fileobj)
         else:
@@ -110,7 +113,7 @@ class ServerSocket:
       self.received.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
     if size == 0:
-      self._log(f'Closing connection to {conn.addr}')
+      self._log(f'Closing connection to {conn.addr} (received zero bytes)')
       self.sel.unregister(conn.sock)
       del self.conns[conn.addr]
       conn.sock.close()

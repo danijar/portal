@@ -21,6 +21,7 @@ from .utils import unpack
 
 from .server_socket import ServerSocket
 from .client_socket import ClientSocket
+from .client_socket import Disconnected
 
 from .server import Server
 from .proc_server import ProcServer
