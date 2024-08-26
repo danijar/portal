@@ -3,4 +3,3 @@ elements
 msgpack
 numpy
 psutil
-pyzmq
