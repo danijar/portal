@@ -118,7 +118,11 @@ class ClientSocket:
     while self.running or (self.sending and self.isconnected.is_set()):
       self.isconnected.wait()
       try:
-        if tuple(self.sel.select(timeout=0.1)):
+        ready = tuple(self.sel.select(timeout=0.2))
+        if not ready:
+          continue
+        mask = ready[0][1]
+        if mask & selectors.EVENT_READ:
           size = recvbuf.recv(self.sock)
           if not size:
             raise OSError('Received zero bytes')
@@ -127,7 +131,7 @@ class ClientSocket:
               raise RuntimeError('Too many incoming messages enqueued')
             self.received.put(recvbuf.result())
             recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-        if self.sending:
+        if mask & selectors.EVENT_WRITE and self.sending:
           first = self.sending[0]
           try:
             first.send(self.sock)
@@ -168,7 +172,7 @@ class ClientSocket:
     if sys.platform == 'win32':
       sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
 
-    self.sel.register(sock, selectors.EVENT_READ, data=None)
+    self.sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, None)
     return sock, addr
 
   def _log(self, *args):

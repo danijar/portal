@@ -78,14 +78,21 @@ class ServerSocket:
 
   def _loop(self):
     while self.running:
-      for reader, _ in self.sel.select(timeout=0.01):
-        if reader.data is None:
-          self._accept(reader.fileobj)
-        else:
-          self._recv(reader.data)
+      writeable = set()
+      for key, mask in self.sel.select(timeout=0.2):
+        if key.data is None:
+          assert mask & selectors.EVENT_READ
+          self._accept(key.fileobj)
+        elif mask & selectors.EVENT_READ:
+          self._recv(key.data)
+        elif mask & selectors.EVENT_WRITE:
+          writeable.add(key.data.addr)
       remaining = []
       for _ in range(len(self.sending)):
         addr, sendbuf = self.sending.popleft()
+        if addr not in writeable:
+          remaining.append((addr, sendbuf))
+          continue
         conn = self.conns.get(addr, None)
         if not conn:
           self._log('Dropping messages to disconnected client')
@@ -100,7 +107,7 @@ class ServerSocket:
     self._log(f'Accepted connection from {addr}')
     sock.setblocking(False)
     conn = Connection(sock, addr)
-    self.sel.register(sock, selectors.EVENT_READ, conn)
+    self.sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, conn)
     self.conns[addr] = conn
 
   def _recv(self, conn):
