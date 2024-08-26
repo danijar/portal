@@ -1,4 +1,7 @@
 import os
+import weakref
+
+import numpy as np
 
 
 class SendBuffer:
@@ -40,7 +43,11 @@ class RecvBuffer:
       if self.pos == 4:
         length = int.from_bytes(self.lenbuf, 'little', signed=False)
         assert 0 < length <= self.maxsize, (length, self.maxsize)
-        self.buffer = bytearray(length)
+        # We use Numpy to allocate uninitialized memory because Python's
+        # `bytearray(length)` zero initializes which is slow.
+        arr = np.empty(length, np.uint8)
+        self.buffer = memoryview(arr.data)
+        weakref.finalize(self.buffer, lambda arr=arr: arr)
         self.pos = 0
     else:
       size = sock.recv_into(memoryview(self.buffer)[self.pos:])
