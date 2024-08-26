@@ -46,7 +46,7 @@ class ServerSocket:
     self.sock.listen()
     self.sel = selectors.DefaultSelector()
     self.sel.register(self.sock, selectors.EVENT_READ, data=None)
-    self._log(f'Listening on port {port}')
+    self._log(f'Listening at {self.addr}')
     self.conns = {}
     self.running = True
     self.event = threading.Event()
@@ -113,7 +113,7 @@ class ServerSocket:
       self.received.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
     if size == 0:
-      self._log(f'Closing connection to {conn.addr} (received zero bytes)')
+      self._log(f'Closing connection to {conn.addr} (Received zero bytes)')
       self.sel.unregister(conn.sock)
       del self.conns[conn.addr]
       conn.sock.close()

@@ -3,6 +3,7 @@ import dataclasses
 import queue
 import selectors
 import socket
+import sys
 import threading
 import time
 
@@ -61,6 +62,7 @@ class ClientSocket:
         self.sock.connect(addr)
         self.sock.settimeout(0)
         self.isconnected.set()
+        self._log('Connection established')
         return True
       except ConnectionError:
         time.sleep(inner)
@@ -119,7 +121,7 @@ class ClientSocket:
         if tuple(self.sel.select(timeout=0.1)):
           size = recvbuf.recv(self.sock)
           if not size:
-            raise OSError('received zero bytes')
+            raise OSError('Received zero bytes')
           if recvbuf.done():
             if self.received.qsize() > self.options.max_recv_queue:
               raise RuntimeError('Too many incoming messages enqueued')
@@ -148,16 +150,24 @@ class ClientSocket:
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       addr = (self.host, self.port)
+
     after = self.options.keepalive_after
     every = self.options.keepalive_every
     fails = self.options.keepalive_fails
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
-    sock.setsockopt(
-        socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT,
-        1000 * (after + every * fails))
+    if sys.platform == 'linux':
+      sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
+      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
+      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
+      sock.setsockopt(
+          socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT,
+          1000 * (after + every * fails))
+    if sys.platform == 'darwin':
+      sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
+    if sys.platform == 'win32':
+      sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
+
     self.sel.register(sock, selectors.EVENT_READ, data=None)
     return sock, addr
 

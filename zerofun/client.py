@@ -9,6 +9,13 @@ import numpy as np
 from . import sockets
 
 
+# TODO
+# Client(name, addr, ipv6, identity=None, maxage=60, pings=maxage/10, maxinflight=16, connect=True, reconnect=True)
+#   connect(timeout=None)
+#   call(name, data) -> future
+#   close()
+
+
 class Client:
 
   RESOLVERS = []

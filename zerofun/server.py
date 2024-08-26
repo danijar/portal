@@ -11,6 +11,15 @@ from . import pool as poollib
 from . import thread
 
 
+# TODO
+# Server(name, addr, ipv6, workers=1, errors=True)
+#   bind(name, workfn, donefn=None, workers=0, batch=0)
+#   start(block=False)
+#   check()
+#   close()
+#   stats()
+
+
 Method = namedtuple('Method', (
     'name,workfn,donefn,pool,workers,batched,insize,inqueue,inprog'))
 
