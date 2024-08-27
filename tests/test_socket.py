@@ -91,7 +91,8 @@ class TestSocket:
     server.close()
     client.close()
 
-  def test_server_dies(self):
+  @pytest.mark.parametrize('repeat', range(3))
+  def test_server_dies(self, repeat):
     port = zerofun.free_port()
     ready = zerofun.context().mp.Semaphore(0)
     q = zerofun.context().mp.Queue()
@@ -99,7 +100,7 @@ class TestSocket:
     def server_fn(ready, port, q):
       server = zerofun.ServerSocket(port)
       ready.release()
-      q.put(server.recv()[1])
+      q.put(bytes(server.recv()[1]))
       server.close()
 
     def client_fn(ready, port, q):

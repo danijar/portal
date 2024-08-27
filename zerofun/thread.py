@@ -1,6 +1,7 @@
 import threading
 import time
 
+from . import contextlib
 from . import utils
 
 
@@ -12,7 +13,7 @@ class Thread:
     name = name or getattr(fn, '__name__', 'thread')
     self.thread = threading.Thread(
         target=self._wrapper, args=args, name=name, daemon=True)
-    utils.child(self)
+    contextlib.child(self)
     self.started = False
     start and self.start()
 
@@ -45,7 +46,7 @@ class Thread:
 
   def kill(self, timeout=3):
     start = time.time()
-    children = utils.children(self.ident)
+    children = contextlib.children(self.ident)
     [x.kill(max(0.1, timeout - (time.time() - start))) for x in children]
     utils.kill_thread(self.thread, max(0.1, timeout - (time.time() - start)))
     return self
@@ -61,10 +62,10 @@ class Thread:
       exitcode = exitcode if isinstance(exitcode, int) else 0
       self.excode = exitcode
     except (SystemExit, KeyboardInterrupt):
-      [x.kill(0.1) for x in utils.children(self.ident)]
+      [x.kill(0.1) for x in contextlib.children(self.ident)]
       self.excode = 2
     except Exception as e:
-      [x.kill(0.1) for x in utils.children(self.ident)]
-      utils.context().error(e, self.name)
-      utils.context().shutdown(1)
+      [x.kill(0.1) for x in contextlib.children(self.ident)]
+      contextlib.context().error(e, self.name)
+      contextlib.context().shutdown(1)
       self.excode = 1

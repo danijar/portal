@@ -8,8 +8,8 @@ import threading
 import time
 
 from . import buffers
+from . import contextlib
 from . import thread
-from . import utils
 
 
 class Disconnected(Exception):
@@ -32,9 +32,10 @@ class Options:
 
 class ClientSocket:
 
-  def __init__(self, host, port, connect=True, **kwargs):
+  def __init__(self, host, port, name='Client', connect=True, **kwargs):
     self.host = host
     self.port = port
+    self.name = name
     self.options = Options(**kwargs)
     self.sel = selectors.DefaultSelector()
     self.sock, self.addr = self._create()
@@ -53,19 +54,21 @@ class ClientSocket:
     assert timeout is None or 0 < timeout
     self._log(f'Connecting to {self.addr}')
     start = time.time()
-    inner = min(0.5 * timeout, 10) if timeout else 10
-    self.sock.settimeout(inner)
+    self.sock.settimeout(1)
     once = True
     while True:
       try:
-        addr = utils.context().resolver(self.addr)
+        # TODO: Instead of relying on keep-alive, we can also resolve the
+        # address again periodically and reconnect if the destination has
+        # changed or disconnect if resolving raises an exception.
+        addr = contextlib.context().resolver(self.addr)
         self.sock.connect(addr)
         self.sock.settimeout(0)
         self.isconnected.set()
         self._log('Connection established')
         return True
       except ConnectionError:
-        time.sleep(inner)
+        time.sleep(1)
       except TimeoutError:
         pass
       if timeout and time.time() - start >= timeout:
@@ -178,4 +181,4 @@ class ClientSocket:
   def _log(self, *args):
     if self.options.debug:
       import elements
-      elements.print('[Client]', *args, color='yellow', bold=True)
+      elements.print(f'[{self.name}]', *args, color='yellow', bold=True)

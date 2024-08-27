@@ -3,6 +3,7 @@ import time
 import cloudpickle
 import psutil
 
+from . import contextlib
 from . import utils
 
 
@@ -11,11 +12,11 @@ class Process:
   def __init__(self, fn, *args, name=None, start=False, context=None):
     fn = cloudpickle.dumps(fn)
     name = name or getattr(fn, '__name__', 'process')
-    context = context or utils.context()
+    context = context or contextlib.context()
     self.process = context.mp.Process(
         target=self._wrapper, name=name, args=(context, name, fn, args))
     self.psutil = None
-    utils.child(self)
+    contextlib.child(self)
     self.started = False
     start and self.start()
 
@@ -74,14 +75,14 @@ class Process:
     exitcode = 0
     try:
       context.start()
-      utils.CONTEXT = context
+      contextlib.CONTEXT = context
       fn = cloudpickle.loads(fn)
       exitcode = fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
     except (SystemExit, KeyboardInterrupt):
       exitcode = 2
     except Exception as e:
-      utils.context().error(e, name)
+      contextlib.context().error(e, name)
       exitcode = 1
     finally:
-      utils.context().shutdown(exitcode)
+      contextlib.context().shutdown(exitcode)

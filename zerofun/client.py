@@ -1,198 +1,138 @@
+import functools
+import itertools
 import time
 import weakref
-from functools import partial as bind
-from collections import deque
 
-import elements
-import numpy as np
-
-from . import sockets
-
-
-# TODO
-# Client(name, addr, ipv6, identity=None, maxage=60, pings=maxage/10, maxinflight=16, connect=True, reconnect=True)
-#   connect(timeout=None)
-#   call(name, data) -> future
-#   close()
+from . import client_socket
+from . import utils
 
 
 class Client:
 
-  RESOLVERS = []
-
   def __init__(
-      self, address, name='Client', ipv6=False, identity=None,
-      pings=10, maxage=120, maxinflight=16, errors=True,
-      connect=False, reconnect=True):
-    assert isinstance(name, str)
-    if identity is None:
-      identity = int(np.random.randint(2 ** 32))
-    self.address = address
-    self.identity = identity
-    self.name = name
-    self.maxinflight = maxinflight
-    self.errors = errors
-    self.reconnect = reconnect
-    self.resolved = None
-    self.socket = sockets.ClientSocket(identity, ipv6, pings, maxage)
-    self.futures = weakref.WeakValueDictionary()
-    self.queue = deque()
-    self.conn_per_sec = elements.FPS()
-    self.send_per_sec = elements.FPS()
-    self.recv_per_sec = elements.FPS()
-    self._connected = False
-    connect and self.connect()
+      self, host, port, name='Client', maxinflight=16, connect=True, **kwargs):
+    assert 1 <= maxinflight, maxinflight
+    self.socket = client_socket.ClientSocket(
+        host, port, name, connect, **kwargs)
+    self.maxinflight = 0
+    self.reqnum = iter(itertools.count(0))
+    self.futures = {}
+    self.errors = []
+    self.sendrate = [0, time.time()]
+    self.recvrate = [0, time.time()]
+    self.waitmean = [0, 0]
 
   @property
   def connected(self):
-    return self._connected
+    return self.socket.connected
 
   def __getattr__(self, name):
     if name.startswith('__'):
       raise AttributeError(name)
     try:
-      return bind(self.call, name)
+      return functools.partial(self.call, name)
     except AttributeError:
       raise ValueError(name)
 
   def stats(self):
-    return {
-        'futures': len(self.futures),
-        'inflight': len(self.queue),
-        'conn_per_sec': self.conn_per_sec.result(),
-        'send_per_sec': self.send_per_sec.result(),
-        'recv_per_sec': self.recv_per_sec.result(),
+    now = time.time()
+    stats = {
+        'inflight': self._numinflight(),
+        'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
+        'recvrate': self.recvrate[0] / (now - self.recvrate[1]),
+        'waitmean': self.waitmean[0] and (self.waitmean[1] / self.waitmean[0]),
     }
+    self.sendrate = [0, now]
+    self.recvrate = [0, now]
+    self.waitmean = [0, 0]
+    return stats
 
-  @elements.timer.section('client_connect')
-  def connect(self, retry=True, timeout=10):
-    msg1 = False
-    msg2 = False
-    while True:
-      self.resolved = self._resolve(self.address)
-      if not msg1:
-        msg1 = True
-        self._print(f'Connecting to {self.resolved}')
-      try:
-        self.socket.connect(self.resolved, timeout)
-        self._print('Connection established')
-        self.conn_per_sec.step(1)
-        self._connected = True
-        return
-      except sockets.ProtocolError as e:
-        self._print(f'Ignoring unexpected message: {e}')
-      except sockets.ConnectError:
-        if not msg2:
-          msg2 = True
-          self._print('--- Could not connect yet and will retry forever ---')
-      if retry:
-        continue
-      else:
-        raise sockets.ConnectError
+  def connect(self, timeout=None):
+    return self.socket.connect(timeout)
 
-  @elements.timer.section('client_call')
-  def call(self, method, data):
-    assert len(self.futures) < 1000, (
-        f'Too many unresolved requests in client {self.name}.\n' +
-        f'Futures: {len(self.futures)}\n' +
-        f'Resolved: {sum([x.done() for x in self.futures.values()])}')
-    if self.maxinflight:
-      with elements.timer.section('inflight_wait'):
-        while sum(not x.done() for x in self.queue) >= self.maxinflight:
-          self.queue[0].check()
-          time.sleep(0.001)
-    if self.errors:
-      try:
-        while self.queue[0].done():
-          self.queue.popleft().result()
-      except IndexError:
-        pass
-    data = sockets.pack(data)
-    rid = self.socket.send_call(method, data)
-    self.send_per_sec.step(1)
-    future = Future(self._receive, rid)
-    self.futures[rid] = future
-    if self.errors or self.maxinflight:
-      self.queue.append(future)
+  def call(self, method, *data):
+    reqnum = next(self.reqnum).to_bytes(8, 'little', signed=False)
+    start = time.time()
+    while self._numinflight() >= self.maxinflight:
+      self._step(timeout=None)
+    self.waitmean[1] += time.time() - start
+    self.waitmean[0] += 1
+    if self.errors:  # Raise errors of dropped futures.
+      raise RuntimeError(self.errors[0])
+    method = (
+        len(method).to_bytes(8, 'little', signed=False) +
+        method.encode('utf-8'))
+    self.socket.send(reqnum, method, *utils.pack(data))
+    self.sendrate[0] += 1
+    future = Future(self._step)
+    self.futures[reqnum] = future
     return future
 
   def close(self):
     return self.socket.close()
 
-  def _receive(self, rid, retry):
-    with elements.timer.section(f'{self.name}_client_receive'):
-      while rid in self.futures and not self.futures[rid].done():
-        result = self._listen()
-        if result is None and not retry:
-          return
-        time.sleep(0.0001)
+  def _numinflight(self):
+    return len(x for x in self.futures.values() if not x.don)
 
-  @elements.timer.section('client_listen')
-  def _listen(self):
-    try:
-      result = self.socket.receive()
-      if result is not None:
-        other, payload = result
-        if other in self.futures:
-          self.futures[other].set_result(sockets.unpack(payload))
-        self.recv_per_sec.step(1)
-      return result
-    except sockets.NotAliveError:
-      self._connected = False
-      self._print('Lost connection to server')
-      if self.reconnect:
-        self.connect()
-      else:
-        raise
-    except sockets.RemoteError as e:
-      self._print(f'Received error response: {e.args[1]}')
-      other = e.args[0]
-      if other in self.futures:
-        self.futures[other].set_error(sockets.RemoteError(e.args[1]))
-    except sockets.ProtocolError as e:
-      self._print(f'Ignoring unexpected message: {e}')
-
-  @elements.timer.section('client_resolve')
-  def _resolve(self, address):
-    for check, resolve in self.RESOLVERS:
-      if check(address):
-        return resolve(address)
-    return address
-
-  def _print(self, text):
-    elements.print(f'[{self.name}] {text}')
+  def _step(self, timeout=None):
+    data = self.socket.recv(timeout)  # May raise queue.Empty.
+    assert len(data) >= 16, 'Unexpectedly short response'
+    reqnum = int.from_bytes(data[:8], 'little', signed=False)
+    status = int.from_bytes(data[8:16], 'little', signed=False)
+    future = self.futures.pop(reqnum, None)
+    assert future, 'Unexpected request number'
+    if status == 0:
+      data = utils.unpack(data[16:])
+      future.set_result(data)
+    else:
+      message = data[16:].decode('utf-8')
+      future.set_error(message)
+      weakref.finalize(future, lambda: self.errors.append(message))
 
 
 class Future:
 
-  def __init__(self, waitfn, *args):
-    self._waitfn = waitfn
-    self._args = args
-    self._status = 0
-    self._result = None
-    self._error = None
+  def __init__(self, step):
+    self.step = step
+    self.don = False
+    self.res = None
+    self.msg = None
 
-  def check(self):
-    if self._status == 0:
-      self._waitfn(*self._args, retry=False)
+  def wait(self, timeout=None):
+    if timeout is None:
+      while not self.don:
+        self.step(timeout=None)
+      assert self.don
+      return True
+    start = time.time()
+    while True:
+      remaining = timeout - (time.time() - start)
+      self.step(timeout=max(0, remaining))
+      if self.don:
+        return True
+      if remaining <= 0:
+        break
+    return False
 
   def done(self):
-    return self._status > 0
+    if not self.don:
+      self.wait(timeout=0)
+    return self.don
 
   def result(self):
-    if self._status == 0:
-      self._waitfn(*self._args, retry=True)
-    if self._status == 1:
-      return self._result
-    elif self._status == 2:
-      raise self._error
-    else:
-      assert False
+    if self.status == 0:
+      self.wait(timeout=None)
+    assert self.don
+    if self.msg is not None:
+      raise RuntimeError(self.msg)
+    return self.res
 
   def set_result(self, result):
-    self._status = 1
-    self._result = result
+    assert not self.don
+    self.don = True
+    self.res = result
 
-  def set_error(self, error):
-    self._status = 2
-    self._error = error
+  def set_error(self, message):
+    assert not self.don
+    self.don = True
+    self.msg = message

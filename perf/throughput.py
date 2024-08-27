@@ -12,7 +12,7 @@ def main():
 
   def server(port):
     server = zerofun.ServerSocket(port)
-    durations = collections.deque(maxlen=10)
+    durations = collections.deque(maxlen=20)
     start = time.time()
     while True:
       addr, data = server.recv()

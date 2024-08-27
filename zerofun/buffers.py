@@ -44,13 +44,17 @@ class RecvBuffer:
         length = int.from_bytes(self.lenbuf, 'little', signed=False)
         assert 0 < length <= self.maxsize, (length, self.maxsize)
         # We use Numpy to allocate uninitialized memory because Python's
-        # `bytearray(length)` zero initializes which is slow.
+        # `bytearray(length)` zero initializes which is slow. This also means
+        # the buffer cannot be pickled accidentally unless explicitly converted
+        # to a `bytes()` object, which is a nice bonus for preventing
+        # performance bugs in user code.
         arr = np.empty(length, np.uint8)
         self.buffer = memoryview(arr.data)
         weakref.finalize(self.buffer, lambda arr=arr: arr)
         self.pos = 0
+
     else:
-      size = sock.recv_into(memoryview(self.buffer)[self.pos:])
+      size = sock.recv_into(self.buffer[self.pos:])
       self.pos += max(0, size)
     return size
 

@@ -32,7 +32,8 @@ class Options:
 
 class ServerSocket:
 
-  def __init__(self, port, **kwargs):
+  def __init__(self, port, name='Server', **kwargs):
+    self.name = name
     self.options = Options(**kwargs)
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
@@ -128,4 +129,4 @@ class ServerSocket:
   def _log(self, *args, **kwargs):
     if self.options.debug:
       import elements
-      elements.print('[Server]', *args, color='blue', bold=True)
+      elements.print(f'[{self.name}]', *args, color='blue', bold=True)
