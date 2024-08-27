@@ -27,7 +27,7 @@ class Options:
   keepalive_after: float = 10
   keepalive_every: float = 10
   keepalive_fails: int = 10
-  debug: bool = True  # TODO
+  logging: bool = True
 
 
 class ClientSocket:
@@ -179,6 +179,6 @@ class ClientSocket:
     return sock, addr
 
   def _log(self, *args):
-    if self.options.debug:
+    if self.options.logging:
       import elements
       elements.print(f'[{self.name}]', *args, color='yellow', bold=True)

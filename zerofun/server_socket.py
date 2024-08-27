@@ -27,7 +27,7 @@ class Options:
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 4096
   max_send_queue: int = 4096
-  debug: bool = True  # TODO
+  logging: bool = True
 
 
 class ServerSocket:
@@ -127,6 +127,6 @@ class ServerSocket:
       conn.sock.close()
 
   def _log(self, *args, **kwargs):
-    if self.options.debug:
+    if self.options.logging:
       import elements
       elements.print(f'[{self.name}]', *args, color='blue', bold=True)

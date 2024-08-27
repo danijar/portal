@@ -6,8 +6,8 @@ from collections import deque, namedtuple
 import elements
 import numpy as np
 
-from . import sockets
 from . import pool as poollib
+from . import server_socket
 from . import thread
 
 
@@ -26,8 +26,8 @@ Method = namedtuple('Method', (
 
 class Server:
 
-  def __init__(
-      self, address, name='Server', ipv6=False, workers=1, errors=True):
+  def __init__(self, port, name='Server', workers=1, errors=True, **kwargs):
+
     self.address = address
     self.workers = workers
     self.name = name
@@ -69,7 +69,6 @@ class Server:
       raise exception
 
   def close(self):
-    self._print('Shutting down')
     self.loop.stop()
     self.default_pool.close()
     self.done_pool.close()
@@ -101,8 +100,10 @@ class Server:
     }
 
   def _loop(self, context):
-    socket = sockets.ServerSocket(self.address, self.ipv6)
-    self._print(f'Listening at {self.address}')
+
+    socket = server_socket.ServerSocket(port, name, **kwargs)
+
+    # socket = sockets.ServerSocket(self.address, self.ipv6)
     while context.running:
       now = time.time()
       result = socket.receive()
@@ -211,6 +212,3 @@ class Server:
     else:
       payload = sockets.pack(result)
     return addr, rid, payload, logs, recvd
-
-  def _print(self, text):
-    elements.print(f'[{self.name}] {text}')
