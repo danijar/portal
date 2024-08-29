@@ -9,6 +9,25 @@ from . import utils
 
 class Process:
 
+  """
+  This process implementation extends the standard Python process as follows:
+
+  1. It provides a kill() method that not only terminates the process itself
+  but also all its nested child processes. This prevents subprocesses from
+  lingering in the background after the Python program has ended.
+
+  2. The process terminates its nested child processes when it encounters an
+  error. This prevents lingering subprocesses on error.
+
+  3. The Python standard library does not always report the alive state of
+  processes correctly. This process provides a more accurate @running property
+  implemented using psutil.
+
+  4. It inherits the context() object of its parent process, which provides
+  cloudpickled initializer functions for each nested child process and error
+  file watching for global shutdown on error.
+  """
+
   def __init__(self, fn, *args, name=None, start=False, context=None):
     fn = cloudpickle.dumps(fn)
     name = name or getattr(fn, '__name__', 'process')
@@ -16,7 +35,7 @@ class Process:
     self.process = context.mp.Process(
         target=self._wrapper, name=name, args=(context, name, fn, args))
     self.psutil = None
-    contextlib.child(self)
+    context.add_child(self)
     self.started = False
     start and self.start()
 
@@ -30,6 +49,8 @@ class Process:
 
   @property
   def running(self):
+    if not self.started:
+      return False
     try:
       alive = self.psutil.status() != psutil.STATUS_ZOMBIE
       return self.psutil.is_running() and alive

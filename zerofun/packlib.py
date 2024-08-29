@@ -4,6 +4,8 @@ import elements
 import msgpack
 import numpy as np
 
+from . import sharray
+
 
 def pack(data):
   leaves, treedef = elements.tree.flatten(data)
@@ -18,15 +20,18 @@ def pack(data):
         assert value.c_contiguous
       specs.append(['bytes'])
       buffers.append(value)
-    elif isinstance(value, (np.ndarray, int, float)):
+    elif isinstance(value, (np.ndarray, np.generic, int, float)):
       value = np.asarray(value)
       if value.dtype == object:
         raise TypeError(data)
       assert value.data.c_contiguous, (
-          "Array is not contiguous in memory. Use np.asarray(arr, order='C') " +
-          "before passing the data into pack().")
+          "Array is not contiguous in memory. Use " +
+          "np.asarray(arr, order='C') before passing the data into pack().")
       specs.append(['array', value.shape, value.dtype.str])
       buffers.append(value.data.cast('c'))
+    elif isinstance(value, sharray.SharedArray):
+      specs.append(['sharray', *value.__getstate__()])
+      buffers.append(b'')
     else:
       raise NotImplementedError(type(value))
   buffers = [msgpack.packb(treedef), msgpack.packb(specs), *buffers]
@@ -55,6 +60,9 @@ def unpack(buffer):
     elif spec[0] == 'array':
       shape, dtype = spec[1:]
       leaves.append(np.frombuffer(buffer, dtype).reshape(shape))
+    elif spec[0] == 'sharray':
+      assert buffer == b''
+      leaves.append(sharray.SharedArray(*spec[1:]))
     else:
       raise NotImplementedError(spec)
   data = elements.tree.unflatten(leaves, treedef)

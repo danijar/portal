@@ -28,51 +28,42 @@ def context():
   return CONTEXT
 
 
-CHILDREN = collections.defaultdict(list)
-
-def child(worker):
-  global CHILDREN
-  if hasattr(worker, 'thread'):
-    assert worker.thread.ident != threading.get_ident()
-  CHILDREN[threading.get_ident()].append(worker)
-
-def children(ident):
-  global CHILDREN
-  return CHILDREN[ident]
-
-
 class Context:
 
   def __init__(self, errfile=None, check_interval=20, resolver=None):
     if errfile and isinstance(errfile, str):
       errfile = pathlib.Path(errfile)
-    self.mp = mp.get_context()
-    self.errfile = errfile
     self.check_interval = check_interval
-    self.resolver_bin = cloudpickle.dumps(resolver or (lambda x: x))
-    self.resolver = None
-    self.printlock = self.mp.Lock()
+    self.children = collections.defaultdict(list)
+    self.errfile = errfile
     self.initfns = []
+    self.mp = mp.get_context()
+    self.printlock = self.mp.Lock()
+    self.resolver = None
+    self.resolver_bin = cloudpickle.dumps(resolver or (lambda x: x))
     self.watcher = None
     self.started = False
     self.start()
 
   def __getstate__(self):
     return {
-        'errfile': self.errfile,
         'check_interval': self.check_interval,
-        'printlock': self.printlock,
+        'errfile': self.errfile,
         'initfns': self.initfns,
+        'printlock': self.printlock,
         'resolver_bin': self.resolver_bin,
     }
 
   def __setstate__(self, d):
-    self.errfile = d['errfile']
     self.check_interval = d['check_interval']
-    self.printlock = d['printlock']
+    self.children = collections.defaultdict(list)
+    self.errfile = d['errfile']
     self.initfns = d['initfns']
-    self.resolver_bin = d['resolver_bin']
     self.mp = mp.get_context()
+    self.printlock = d['printlock']
+    self.resolver = None
+    self.resolver_bin = d['resolver_bin']
+    self.watcher = None
     self.started = False
 
   def initfn(self, initfn):
@@ -110,6 +101,15 @@ class Context:
   def close(self):
     if self.watcher:
       utils.kill_thread(self.watcher)
+
+  def add_child(self, worker):
+    parent = threading.get_ident()
+    if hasattr(worker, 'thread'):
+      assert worker.thread.ident != parent
+    self.children[parent].append(worker)
+
+  def get_children(self, ident):
+    return self.children[ident]
 
   def _watcher(self):
     try:

@@ -1,5 +1,4 @@
 import ctypes
-import multiprocessing as mp
 import socket
 import sys
 import threading
@@ -85,13 +84,13 @@ def free_port():
       if s.connect_ex(('', port)):
         return port
 
-escseq = lambda parts: '\033[' + ';'.join(parts) + 'm'
-colors = dict(
-    black=0, red=1, green=2, yellow=3, blue=4, magenta=5, cyan=6, white=7)
 
 def style(color=None, background=None, bold=None, underline=None, reset=None):
   if not sys.stdout.isatty():
     return ''
+  escseq = lambda parts: '\033[' + ';'.join(parts) + 'm'
+  colors = dict(
+      black=0, red=1, green=2, yellow=3, blue=4, magenta=5, cyan=6, white=7)
   parts = []
   if reset:
     parts.append(escseq('0'))

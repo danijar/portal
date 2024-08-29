@@ -13,17 +13,19 @@ from .thread import Thread
 from .process import Process
 
 from .server_socket import ServerSocket
-from .client_socket import ClientSocket, Disconnected
+from .client_socket import ClientSocket
+from .client_socket import Disconnected
 
 from .client import Client
 from .server import Server
-# from .proc_server import ProcServer
 
 from .packlib import pack
 from .packlib import unpack
 from .packlib import tree_equals
 
-from .utils import run
+from .sharray import SharedArray
+
+from .utils import free_port
 from .utils import kill_proc
 from .utils import kill_thread
-from .utils import free_port
+from .utils import run

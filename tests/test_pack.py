@@ -17,3 +17,14 @@ class TestPack:
     buffer = b''.join(buffers)
     restored = zerofun.unpack(buffer)
     assert zerofun.tree_equals(value, restored)
+
+  def test_sharray(self):
+    content = np.arange(6).reshape(3, 2)
+    value = zerofun.SharedArray((3, 2), np.float32)
+    value.arr[:] = content
+    buffers = zerofun.pack({'foo': value})
+    buffer = b''.join(buffers)
+    restored = zerofun.unpack(buffer)
+    assert restored['foo'].arr.shape == (3, 2)
+    assert (restored['foo'].arr == content).all()
+    assert restored['foo'].shm.name == value.shm.name
