@@ -106,9 +106,9 @@ class ClientSocket:
         if timeout and time.time() - start >= timeout:
           raise
 
-  def close(self):
+  def close(self, timeout=None):
     self.running = False
-    self.thread.join()
+    self.thread.join(timeout)
     self.sock.close()
     self.sel.close()
 
@@ -148,7 +148,9 @@ class ClientSocket:
           except (TimeoutError, BlockingIOError):
             pass
       except OSError as e:
-        self._log(f'Connection to server lost ({e})')
+        detail = f'{type(e).__name__}'
+        detail = f'{detail}: {e}' if str(e) else detail
+        self._log(f'Connection to server lost ({detail})')
         self.isconnected.clear()
         self.sel.unregister(self.sock)
         self.sock.close()

@@ -67,8 +67,8 @@ class Client:
     self.futures[reqnum] = future
     return future
 
-  def close(self):
-    return self.socket.close()
+  def close(self, timeout=None):
+    return self.socket.close(timeout)
 
   def _numinflight(self):
     return len([x for x in self.futures.values() if not x.don])

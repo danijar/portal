@@ -1,3 +1,4 @@
+import numpy as np
 import zerofun
 
 
@@ -6,16 +7,47 @@ class TestServer:
   def test_basic(self):
     port = zerofun.free_port()
     server = zerofun.Server(port)
-    def foo(x):
+    def fn(x):
       assert x == 42
       return 2 * x
-    server.bind('foo', foo)
+    server.bind('fn', fn)
     server.start(block=False)
     client = zerofun.Client('localhost', port)
-    future = client.call('foo', 42)
+    future = client.call('fn', 42)
     assert future.result() == 84
     client.close()
     server.close()
+
+  def test_sharray(self):
+
+    def server(port):
+      server = zerofun.Server(port)
+      def fn(data):
+        assert data.array.shape == (3, 2)
+        assert data.array.dtype == np.float32
+        return data
+      server.bind('fn', fn)
+      server.start(block=True)
+
+    def client(port):
+      data = zerofun.SharedArray((3, 2), np.float32)
+      data.array[:] = np.arange(6, dtype=np.float32).reshape(3, 2)
+      client = zerofun.Client('localhost', port)
+      result = client.call('fn', data).result()
+      assert result.name == data.name
+      assert result, data
+      client.close()
+      data.close()
+
+    port = zerofun.free_port()
+    client = zerofun.Process(client, port, start=True)
+    server = zerofun.Process(server, port, start=True)
+    client.join()
+    server.kill()
+
+  # TODO: Translate old tests.
+
+
 
 
 # import queue

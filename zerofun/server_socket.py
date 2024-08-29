@@ -73,9 +73,9 @@ class ServerSocket:
     maxsize = self.options.max_msg_size
     self.sending.append((addr, buffers.SendBuffer(*data, maxsize=maxsize)))
 
-  def close(self):
+  def close(self, timeout=None):
     self.running = False
-    self.thread.join()
+    self.thread.join(timeout)
     [conn.sock.close() for conn in self.conns.values()]
     self.sock.close()
     self.sel.close()

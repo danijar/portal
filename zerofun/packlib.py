@@ -11,7 +11,10 @@ def pack(data):
   leaves, treedef = elements.tree.flatten(data)
   specs, buffers = [], []
   for value in leaves:
-    if isinstance(value, str):
+    if value is None:
+      specs.append(['none'])
+      buffers.append(b'\x00')
+    elif isinstance(value, str):
       specs.append(['utf8'])
       buffers.append(value.encode('utf-8'))
     elif isinstance(value, (bytes, bytearray, memoryview)):
@@ -31,7 +34,7 @@ def pack(data):
       buffers.append(value.data.cast('c'))
     elif isinstance(value, sharray.SharedArray):
       specs.append(['sharray', *value.__getstate__()])
-      buffers.append(b'')
+      buffers.append(b'\x00')
     else:
       raise NotImplementedError(type(value))
   buffers = [msgpack.packb(treedef), msgpack.packb(specs), *buffers]
@@ -53,7 +56,10 @@ def unpack(buffer):
   specs = msgpack.unpackb(specs)
   leaves = []
   for spec, buffer in zip(specs, buffers):
-    if spec[0] == 'utf8':
+    if spec[0] == 'none':
+      assert buffer == b'\x00'
+      leaves.append(None)
+    elif spec[0] == 'utf8':
       leaves.append(bytes(buffer).decode('utf-8'))
     elif spec[0] == 'bytes':
       leaves.append(buffer)
@@ -61,7 +67,7 @@ def unpack(buffer):
       shape, dtype = spec[1:]
       leaves.append(np.frombuffer(buffer, dtype).reshape(shape))
     elif spec[0] == 'sharray':
-      assert buffer == b''
+      assert buffer == b'\x00'
       leaves.append(sharray.SharedArray(*spec[1:]))
     else:
       raise NotImplementedError(spec)
@@ -80,6 +86,11 @@ def tree_equals(xs, ys):
   elif isinstance(xs, np.ndarray):
     assert xs.shape == ys.shape, (xs.shape, ys.shape)
     assert xs.dtype == ys.dtype, (xs.dtype, ys.dtype)
+    return (xs == ys).all()
+  elif isinstance(xs, sharray.SharedArray):
+    assert xs.name == ys.name, (xs.name, ys.name)
+    assert xs.array.shape == ys.array.shape, (xs.array.shape, ys.array.shape)
+    assert xs.array.dtype == ys.array.dtype, (xs.array.dtype, ys.array.dtype)
     return (xs == ys).all()
   else:
     return xs == ys

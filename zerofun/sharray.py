@@ -17,6 +17,10 @@ class SharedArray:
     weakref.finalize(self.arr, self.shm.close)
 
   @property
+  def name(self):
+    return self.shm.name
+
+  @property
   def array(self):
     return self.arr
 

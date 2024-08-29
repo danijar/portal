@@ -169,6 +169,29 @@ class TestSocket:
         zerofun.Process(client, port),
     ])
 
+  @pytest.mark.parametrize('repeat', range(3))
+  def test_shutdown(self, repeat):
+
+   def server(port):
+     server = zerofun.ServerSocket(port)
+     addr, data = server.recv()
+     assert data == b'foo'
+     large_result = bytes(1024 ** 2)
+     server.send(addr, large_result)
+     server.close(timeout=None)  # Block until remaining messages are sent
+
+   def client(port):
+     client = zerofun.ClientSocket('localhost', port)
+     client.send(b'foo')
+     assert client.recv() == bytes(1024 ** 2)
+     client.close()
+
+   port = zerofun.free_port()
+   zerofun.run([
+       zerofun.Process(server, port),
+       zerofun.Process(client, port),
+   ])
+
   # TODO:
   # - test keep-alive
   # - queue limits

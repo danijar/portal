@@ -35,10 +35,10 @@ class Server:
     if block:
       self.loop.join(timeout=None)
 
-  def close(self):
+  def close(self, timeout=None):
     assert self.running
     self.running = False
-    self.loop.join(timeout=1)
+    self.loop.join(timeout)
     self.loop.kill()
     [x.close() for x in self.pools]
 
@@ -52,8 +52,10 @@ class Server:
     self.close()
 
   def _loop(self):
-    while self.running:
+    while self.running or self.jobs:
       while True:  # Loop syntax used to break on error.
+        if not self.running:  # Do not accept further requests.
+          break
         try:
           addr, data = self.socket.recv(timeout=0.0001)
         except queue.Empty:
