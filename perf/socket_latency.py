@@ -26,7 +26,6 @@ def main():
       client.recv()
       end = time.perf_counter()
       durations.append(end - start)
-      start = end
       ping = sum(durations) / len(durations)
       print(1000 * ping)  # <1ms
 

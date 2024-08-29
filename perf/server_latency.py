@@ -6,40 +6,30 @@ import zerofun
 
 def main():
 
-  size = 1024 ** 3 // 4
-  prefetch = 8
-  twoway = False
+  size = 1024
 
   def server(port):
     server = zerofun.Server(port)
     def fn(x):
       assert len(x) == size
-      return x if twoway else b'ok'
+      return b'ok'
     server.bind('foo', fn)
     server.start(block=True)
 
   def client(port):
     data = bytearray(size)
-    client = zerofun.Client('localhost', port, maxinflight=prefetch + 1)
+    client = zerofun.Client('localhost', port)
     futures = collections.deque()
-    for _ in range(prefetch):
-      futures.append(client.call('foo', data))
     durations = collections.deque(maxlen=50)
-    start = time.time()
     while True:
+      start = time.perf_counter()
       futures.append(client.call('foo', data))
       result = futures.popleft().result()
-      if twoway:
-        assert len(result) == size
-      else:
-        assert result == b'ok'
-      end = time.time()
+      assert result == b'ok'
+      end = time.perf_counter()
       durations.append(end - start)
-      start = end
-      avgdur = sum(durations) / len(durations)
-      mbps = size / avgdur / (1024 ** 2)
-      mbps *= 2 if twoway else 1
-      print(mbps)  # 4000 oneway, 3000 twoway
+      ping = sum(durations) / len(durations)
+      print(1000 * ping)  # <1ms
 
   port = zerofun.free_port()
   zerofun.run([

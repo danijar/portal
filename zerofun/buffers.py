@@ -20,6 +20,10 @@ class SendBuffer:
     self.buffers = [lenbuf, *buffers]
     self.pos = 0
 
+  def __repr__(self):
+    lengths = [len(x) for x in self.buffers]
+    return f'SendBuffer(pos={self.pos}, lengths={lengths})'
+
   def send(self, sock):
     first, *others = self.buffers
     assert self.pos < len(first)
@@ -44,6 +48,10 @@ class RecvBuffer:
     self.buffer = None
     self.pos = 0
 
+  def __repr__(self):
+    length = self.buffer and len(self.buffer)
+    return f'RecvBuffer(pos={self.pos}, length={length})'
+
   def recv(self, sock):
     if self.buffer is None:
       size = sock.recv_into(memoryview(self.lenbuf)[self.pos:])
@@ -63,6 +71,7 @@ class RecvBuffer:
     else:
       size = sock.recv_into(self.buffer[self.pos:])
       self.pos += max(0, size)
+      assert 0 <= self.pos <= len(self.buffer), (0, self.pos, len(self.buffer))
     if size == 0:
       raise ConnectionResetError
     return size

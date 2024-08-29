@@ -137,16 +137,19 @@ class TestSocket:
     client.join()
 
   @pytest.mark.parametrize('repeat', range(3))
-  def test_bidirectional(self, repeat, size=1024 ** 2, prefetch=16):
+  def test_twoway(self, repeat, size=1024 ** 2, prefetch=16):
 
     def server(port):
       server = zerofun.ServerSocket(port)
+      expected = bytearray(size)
       while True:
         addr, data = server.recv()
         if data == b'exit':
-          return
+          break
         server.send(addr, data)
         assert len(data) == size
+        assert data == expected
+      server.close()
 
     def client(port):
       data = bytearray(size)
@@ -158,6 +161,7 @@ class TestSocket:
         result = client.recv()
         assert len(result) == size
       client.send(b'exit')
+      client.close()
 
     port = zerofun.free_port()
     zerofun.run([

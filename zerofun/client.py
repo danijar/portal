@@ -78,9 +78,6 @@ class Client:
     assert len(data) >= 16, 'Unexpectedly short response'
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
-
-    print('->', reqnum, status)
-
     future = self.futures.pop(reqnum, None)
     assert future, (
         f'Unexpected request number: {reqnum}', sorted(self.futures.keys()))

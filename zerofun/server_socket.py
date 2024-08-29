@@ -97,6 +97,9 @@ class ServerSocket:
         if addr not in writeable:
           remaining.append((addr, sendbuf))
           continue
+        # Prevent later buffers from being written before the first buffer for
+        # each address is fully written. This would cause mingled data.
+        writeable.remove(addr)
         conn = self.conns.get(addr, None)
         if not conn:
           self._log('Dropping messages to disconnected client')
@@ -109,6 +112,7 @@ class ServerSocket:
           self._disconnect(conn)
         except BlockingIOError:
           remaining.append((addr, sendbuf))
+
       self.sending.extendleft(reversed(remaining))
 
   def _accept(self, sock):

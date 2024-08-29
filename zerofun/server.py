@@ -66,7 +66,7 @@ class Server:
           strlen = int.from_bytes(data[:8], 'little', signed=False)
           name = bytes(data[8: 8 + strlen]).decode('utf-8')
           data = packlib.unpack(data[8 + strlen:])
-        except Exception as e:
+        except Exception:
           self._error(addr, reqnum, 2, 'Could not decode message')
           break
         if name not in self.methods:
@@ -85,13 +85,11 @@ class Server:
           data = job.result()
           data = packlib.pack(data)
           status = int(0).to_bytes(8, 'little', signed=False)
-          print('RESPONSE', job.addr, job.reqnum, status)
           self.socket.send(job.addr, job.reqnum, status, *data)
         except Exception as e:
           self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
 
   def _error(self, addr, reqnum, status, message):
-    print('error', message)
     status = status.to_bytes(8, 'little', signed=False)
     data = message.encode('utf-8')
     self.socket.send(addr, reqnum, status, data)
