@@ -59,13 +59,10 @@ class ClientSocket:
     assert timeout is None or 0 < timeout
     self._log(f'Connecting to {self.addr}')
     start = time.time()
-    self.sock.settimeout(1)
+    self.sock.settimeout(10)
     once = True
     while True:
       try:
-        # TODO: Instead of relying on keep-alive, we can also resolve the
-        # address again periodically and reconnect if the destination has
-        # changed or disconnect if resolving raises an exception.
         addr = contextlib.context().resolver(self.addr)
         self.sock.connect(addr)
         self.sock.settimeout(0)
@@ -73,7 +70,7 @@ class ClientSocket:
         self._log('Connection established')
         return True
       except ConnectionError:
-        time.sleep(1)
+        pass
       except TimeoutError:
         pass
       if timeout and time.time() - start >= timeout:
