@@ -1,214 +1,99 @@
 import concurrent.futures
-import time
-import traceback
-from collections import deque, namedtuple
+import queue
 
-import elements
-import numpy as np
-
-from . import pool as poollib
+from . import packlib
+from . import poollib
 from . import server_socket
 from . import thread
-
-
-# TODO
-# Server(name, addr, ipv6, workers=1, errors=True)
-#   bind(name, workfn, donefn=None, workers=0, batch=0)
-#   start(block=False)
-#   check()
-#   close()
-#   stats()
-
-
-Method = namedtuple('Method', (
-    'name,workfn,donefn,pool,workers,batched,insize,inqueue,inprog'))
 
 
 class Server:
 
   def __init__(self, port, name='Server', workers=1, errors=True, **kwargs):
-
-    self.address = address
-    self.workers = workers
-    self.name = name
-    self.errors = errors
-    self.ipv6 = ipv6
+    self.socket = server_socket.ServerSocket(port, name, **kwargs)
+    self.loop = thread.Thread(self._loop)
     self.methods = {}
-    self.default_pool = poollib.ThreadPool(workers, 'work')
-    self.other_pools = []
-    self.done_pool = poollib.ThreadPool(1, 'log')
-    self.result_set = set()
-    self.done_queue = deque()
-    self.done_proms = deque()
-    self.agg = elements.Agg()
-    self.loop = thread.StoppableThread(self._loop, name=f'{name}_loop')
-    self.exception = None
+    self.jobs = set()
+    self.pool = poollib.ThreadPool(workers, 'pool_default')
+    self.pools = [self.pool]
+    self.errors = errors
+    self.running = False
 
-  def bind(self, name, workfn, donefn=None, workers=0, batch=0):
+  def bind(self, name, fn, workers=0):
+    assert not self.running
     if workers:
-      pool = poollib.ThreadPool(workers, name)
-      self.other_pools.append(pool)
+      pool = poollib.ThreadPool(workers, f'pool_{name}')
+      self.pools.append(pool)
     else:
-      workers = self.workers
-      pool = self.default_pool
-    batched = (batch > 0)
-    insize = max(1, batch)
-    self.methods[name] = Method(
-        name, workfn, donefn, pool, workers, batched, insize, deque(), [0])
+      pool = self.pool
+    self.methods[name] = (fn, pool)
 
-  def start(self):
+  def start(self, block=True):
+    assert not self.running
+    self.running = True
     self.loop.start()
-
-  def check(self):
-    self.loop.check()
-    [not x.done() or x.result() for x in self.result_set.copy()]
-    [not x.done() or x.result() for x in self.done_proms.copy()]
-    if self.exception:
-      exception = self.exception
-      self.exception = None
-      raise exception
+    if block:
+      self.loop.join(timeout=None)
 
   def close(self):
-    self.loop.stop()
-    self.default_pool.close()
-    self.done_pool.close()
-    for pool in self.other_pools:
-      pool.close()
-
-  def run(self):
-    try:
-      self.start()
-      while True:
-        self.check()
-        time.sleep(1)
-    finally:
-      self.close()
-
-  def __enter__(self):
-    self.start()
-    return self
-
-  def __exit__(self, type, value, traceback):
-    self.close()
+    assert self.running
+    self.running = False
+    self.loop.join(timeout=1)
+    self.loop.kill()
+    [x.close() for x in self.pools]
 
   def stats(self):
-    return {
-        **self.agg.result(),
-        'result_set': len(self.result_set),
-        'done_queue': len(self.done_queue),
-        'done_proms': len(self.done_proms),
-    }
+    return {}  # TODO
 
-  def _loop(self, context):
+  def __enter__(self):
+    return self
 
-    socket = server_socket.ServerSocket(port, name, **kwargs)
+  def __exit__(self, *e):
+    self.close()
 
-    # socket = sockets.ServerSocket(self.address, self.ipv6)
-    while context.running:
-      now = time.time()
-      result = socket.receive()
-      self._handle_request(socket, result, now)
-      for method in self.methods.values():
-        self._handle_input(method, now)
-      self._handle_results(socket, now)
-      self._handle_dones()
-      time.sleep(0.0001)
-    socket.close()
+  def _loop(self):
+    while self.running:
+      while True:  # Loop syntax used to break on error.
+        try:
+          addr, data = self.socket.recv(timeout=0.0001)
+        except queue.Empty:
+          break
+        if len(data) < 8:
+          self._error(addr, bytes(8), 1, 'Message too short')
+          break
+        reqnum, data = bytes(data[:8]), data[8:]
+        try:
+          strlen = int.from_bytes(data[:8], 'little', signed=False)
+          name = bytes(data[8: 8 + strlen]).decode('utf-8')
+          data = packlib.unpack(data[8 + strlen:])
+        except Exception as e:
+          self._error(addr, reqnum, 2, 'Could not decode message')
+          break
+        if name not in self.methods:
+          self._error(addr, reqnum, 3, f'Unknown method {name}')
+          break
+        fn, pool = self.methods[name]
+        job = pool.submit(fn, *data)
+        job.addr = addr
+        job.reqnum = reqnum
+        self.jobs.add(job)
+        break  # We do not actually want to loop.
+      completed, self.jobs = concurrent.futures.wait(
+          self.jobs, 0.0001, concurrent.futures.FIRST_COMPLETED)
+      for job in completed:
+        try:
+          data = job.result()
+          data = packlib.pack(data)
+          status = int(0).to_bytes(8, 'little', signed=False)
+          print('RESPONSE', job.addr, job.reqnum, status)
+          self.socket.send(job.addr, job.reqnum, status, *data)
+        except Exception as e:
+          self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
 
-  def _handle_request(self, socket, result, now):
-    if result is None:
-      return
-    addr, rid, name, payload = result
-    method = self.methods.get(name, None)
-    if not method:
-      socket.send_error(addr, rid, f'Unknown method {name}.')
-      return
-    method.inqueue.append((addr, rid, payload, now))
-    self._handle_input(method, now)
-
-  def _handle_input(self, method, now):
-    if len(method.inqueue) < method.insize:
-      return
-    if method.inprog[0] >= 2 * method.workers:
-      return
-    method.inprog[0] += 1
-    if method.batched:
-      inputs = [method.inqueue.popleft() for _ in range(method.insize)]
-      addr, rid, payload, recvd = zip(*inputs)
-    else:
-      addr, rid, payload, recvd = method.inqueue.popleft()
-    future = method.pool.submit(self._work, method, addr, rid, payload, recvd)
-    future.method = method
-    future.addr = addr
-    future.rid = rid
-    self.result_set.add(future)
-    if method.donefn:
-      self.done_queue.append(future)
-
-  def _handle_results(self, socket, now):
-    completed, self.result_set = concurrent.futures.wait(
-        self.result_set, 0, concurrent.futures.FIRST_COMPLETED)
-    for future in completed:
-      method = future.method
-      try:
-        result = future.result()
-        addr, rid, payload, logs, recvd = result
-        if method.batched:
-          for addr, rid, payload in zip(addr, rid, payload):
-            socket.send_result(addr, rid, payload)
-          for recvd in recvd:
-            self.agg.add(method.name, now - recvd, ('min', 'avg', 'max'))
-        else:
-          socket.send_result(addr, rid, payload)
-          self.agg.add(method.name, now - recvd, ('min', 'avg', 'max'))
-      except Exception as e:
-        print(f'Exception in server {self.name}:')
-        typ, tb = type(e), e.__traceback__
-        full = ''.join(traceback.format_exception(typ, e, tb)).strip('\n')
-        print(full)
-        if method.batched:
-          for addr, rid in zip(future.addr, future.rid):
-            socket.send_error(addr, rid, repr(e))
-        else:
-          socket.send_error(future.addr, future.rid, repr(e))
-        if self.errors:
-          self.exception = e
-      finally:
-        if not method.donefn:
-          method.inprog[0] -= 1
-
-  def _handle_dones(self):
-    while self.done_queue and self.done_queue[0].done():
-      future = self.done_queue.popleft()
-      if future.exception():
-        continue
-      addr, rid, payload, logs, recvd = future.result()
-      future2 = self.done_pool.submit(future.method.donefn, logs)
-      future2.method = future.method
-      self.done_proms.append(future2)
-    while self.done_proms and self.done_proms[0].done():
-      future = self.done_proms.popleft()
-      future.result()
-      future.method.inprog[0] -= 1
-
-  def _work(self, method, addr, rid, payload, recvd):
-    if method.batched:
-      data = [sockets.unpack(x) for x in payload]
-      data = elements.tree.map(lambda *xs: np.stack(xs), *data)
-    else:
-      data = sockets.unpack(payload)
-    if method.donefn:
-      result, logs = method.workfn(data)
-    else:
-      result = method.workfn(data)
-      if result is None:
-        result = []
-      logs = None
-    if method.batched:
-      results = [
-          elements.tree.map(lambda x: x[i], result)
-          for i in range(method.insize)]
-      payload = [sockets.pack(x) for x in results]
-    else:
-      payload = sockets.pack(result)
-    return addr, rid, payload, logs, recvd
+  def _error(self, addr, reqnum, status, message):
+    print('error', message)
+    status = status.to_bytes(8, 'little', signed=False)
+    data = message.encode('utf-8')
+    self.socket.send(addr, reqnum, status, data)
+    if self.errors:
+      raise RuntimeError(message)

@@ -1,3 +1,23 @@
+import zerofun
+
+
+class TestServer:
+
+  def test_basic(self):
+    port = zerofun.free_port()
+    server = zerofun.Server(port)
+    def foo(x):
+      assert x == 42
+      return 2 * x
+    server.bind('foo', foo)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    future = client.call('foo', 42)
+    assert future.result() == 84
+    client.close()
+    server.close()
+
+
 # import queue
 # import threading
 # import time

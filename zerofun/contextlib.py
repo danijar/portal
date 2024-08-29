@@ -7,7 +7,6 @@ import time
 import traceback
 
 import cloudpickle
-import elements
 import psutil
 
 from . import utils
@@ -97,7 +96,9 @@ class Context:
     long = ''.join(traceback.format_exception(typ, e, tb)).strip('\n')
     message = f"Error in '{name}' ({summary}):\n{long}"
     with self.printlock:
-      elements.print(message, color='red')
+      style = utils.style(color='red')
+      reset = utils.style(reset=True)
+      print(style + message + reset)
     if self.errfile:
       with self.errfile.open('wb') as f:
         f.write(message.encode('utf-8'))

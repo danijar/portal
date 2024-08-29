@@ -1,16 +1,10 @@
-import collections
 import ctypes
 import multiprocessing as mp
-import os
-import pathlib
 import socket
+import sys
 import threading
 import time
-import traceback
 
-import cloudpickle
-import elements
-import msgpack
 import numpy as np
 import psutil
 
@@ -91,30 +85,21 @@ def free_port():
       if s.connect_ex(('', port)):
         return port
 
+escseq = lambda parts: '\033[' + ';'.join(parts) + 'm'
+colors = dict(
+    black=0, red=1, green=2, yellow=3, blue=4, magenta=5, cyan=6, white=7)
 
-def pack(data):
-  leaves, structure = elements.tree.flatten(data)
-  dtypes, shapes, buffers = [], [], []
-  for value in leaves:
-    value = np.asarray(value)
-    if value.dtype == object:
-      raise TypeError(data)
-    assert value.data.c_contiguous, (
-        "Array is not contiguous in memory. Use np.asarray(arr, order='C') " +
-        "before passing the data into pack().")
-    dtypes.append(value.dtype.str)
-    shapes.append(value.shape)
-    buffers.append(value.data)
-  meta = (structure, dtypes, shapes)
-  payload = [msgpack.packb(meta), *buffers]
-  return payload
-
-
-def unpack(payload):
-  meta, *buffers = payload
-  structure, dtypes, shapes = msgpack.unpackb(meta)
-  leaves = [
-      np.frombuffer(b, d).reshape(s)
-      for i, (d, s, b) in enumerate(zip(dtypes, shapes, buffers))]
-  data = elements.tree.unflatten(leaves, structure)
-  return data
+def style(color=None, background=None, bold=None, underline=None, reset=None):
+  if not sys.stdout.isatty():
+    return ''
+  parts = []
+  if reset:
+    parts.append(escseq('0'))
+  if color or bold or underline:
+    args = ['3' + (str(colors[color]) if color else '9')]
+    bold and args.append('1')
+    underline and args.append('4')
+    parts.append(escseq(args))
+  if background:
+    parts.append(escseq('4' + str(colors[background])))
+  return ''.join(parts)

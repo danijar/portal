@@ -7,6 +7,7 @@ import threading
 
 from . import buffers
 from . import thread
+from . import utils
 
 
 class Connection:
@@ -33,6 +34,8 @@ class Options:
 class ServerSocket:
 
   def __init__(self, port, name='Server', **kwargs):
+    if isinstance(port, str):
+      port = int(port.rsplit(':', 1)[1])
     self.name = name
     self.options = Options(**kwargs)
     if self.options.ipv6:
@@ -98,8 +101,13 @@ class ServerSocket:
         if not conn:
           self._log('Dropping messages to disconnected client')
           continue
-        sendbuf.send(conn.sock)
-        if not sendbuf.done():
+        try:
+          sendbuf.send(conn.sock)
+          if not sendbuf.done():
+            remaining.append((addr, sendbuf))
+        except ConnectionResetError:
+          self._disconnect(conn)
+        except BlockingIOError:
           remaining.append((addr, sendbuf))
       self.sending.extendleft(reversed(remaining))
 
@@ -114,19 +122,25 @@ class ServerSocket:
   def _recv(self, conn):
     if not conn.recvbuf:
       conn.recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-    size = conn.recvbuf.recv(conn.sock)
+    try:
+      conn.recvbuf.recv(conn.sock)
+    except ConnectionResetError:
+      self._disconnect(conn)
+      return
     if conn.recvbuf.done():
       if self.received.qsize() > self.options.max_recv_queue:
         raise RuntimeError('Too many incoming messages enqueued')
       self.received.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
-    if size == 0:
-      self._log(f'Closing connection to {conn.addr} (Received zero bytes)')
-      self.sel.unregister(conn.sock)
-      del self.conns[conn.addr]
-      conn.sock.close()
+
+  def _disconnect(self, conn):
+    self._log(f'Closing connection to {conn.addr} (Received zero bytes)')
+    self.sel.unregister(conn.sock)
+    del self.conns[conn.addr]
+    conn.sock.close()
 
   def _log(self, *args, **kwargs):
     if self.options.logging:
-      import elements
-      elements.print(f'[{self.name}]', *args, color='blue', bold=True)
+      style = utils.style(color='blue', bold=True)
+      reset = utils.style(reset=True)
+      print(style + f'[{self.name}]', *args, reset)

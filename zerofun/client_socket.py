@@ -10,6 +10,7 @@ import time
 from . import buffers
 from . import contextlib
 from . import thread
+from . import utils
 
 
 class Disconnected(Exception):
@@ -32,7 +33,11 @@ class Options:
 
 class ClientSocket:
 
-  def __init__(self, host, port, name='Client', connect=True, **kwargs):
+  def __init__(self, host, port=None, name='Client', connect=True, **kwargs):
+    assert '://' not in host, host
+    if port is None:
+      host, port = host.rsplit(':', 1)
+      port = int(port)
     self.host = host
     self.port = port
     self.name = name
@@ -180,5 +185,6 @@ class ClientSocket:
 
   def _log(self, *args):
     if self.options.logging:
-      import elements
-      elements.print(f'[{self.name}]', *args, color='yellow', bold=True)
+      style = utils.style(color='yellow', bold=True)
+      reset = utils.style(reset=True)
+      print(style + f'[{self.name}]', *args, reset)

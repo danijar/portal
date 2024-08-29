@@ -7,6 +7,11 @@ import numpy as np
 class SendBuffer:
 
   def __init__(self, *buffers, maxsize=None):
+    for buffer in buffers:
+      assert isinstance(buffer, (bytes, bytearray, memoryview)), type(buffer)
+      assert not isinstance(buffer, memoryview) or buffer.c_contiguous
+    buffers = tuple(
+         x.cast('c') if isinstance(x, memoryview) else x for x in buffers)
     length = sum(len(x) for x in buffers)
     assert all(len(x) for x in buffers)
     assert 1 <= length, length
@@ -17,7 +22,10 @@ class SendBuffer:
 
   def send(self, sock):
     first, *others = self.buffers
+    assert self.pos < len(first)
     size = os.writev(sock.fileno(), [memoryview(first)[self.pos:], *others])
+    if size == 0:  # TODO
+      raise ConnectionResetError
     assert 0 <= size, size
     self.pos += max(0, size)
     while self.buffers and self.pos >= len(self.buffers[0]):
@@ -42,7 +50,7 @@ class RecvBuffer:
       self.pos += max(0, size)
       if self.pos == 4:
         length = int.from_bytes(self.lenbuf, 'little', signed=False)
-        assert 0 < length <= self.maxsize, (length, self.maxsize)
+        assert 1 <= length <= self.maxsize, (1, length, self.maxsize)
         # We use Numpy to allocate uninitialized memory because Python's
         # `bytearray(length)` zero initializes which is slow. This also means
         # the buffer cannot be pickled accidentally unless explicitly converted
@@ -52,10 +60,11 @@ class RecvBuffer:
         self.buffer = memoryview(arr.data)
         weakref.finalize(self.buffer, lambda arr=arr: arr)
         self.pos = 0
-
     else:
       size = sock.recv_into(self.buffer[self.pos:])
       self.pos += max(0, size)
+    if size == 0:
+      raise ConnectionResetError
     return size
 
   def done(self):

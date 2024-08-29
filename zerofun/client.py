@@ -4,7 +4,7 @@ import time
 import weakref
 
 from . import client_socket
-from . import utils
+from . import packlib
 
 
 class Client:
@@ -14,7 +14,7 @@ class Client:
     assert 1 <= maxinflight, maxinflight
     self.socket = client_socket.ClientSocket(
         host, port, name, connect, **kwargs)
-    self.maxinflight = 0
+    self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
     self.errors = []
@@ -59,10 +59,9 @@ class Client:
     self.waitmean[0] += 1
     if self.errors:  # Raise errors of dropped futures.
       raise RuntimeError(self.errors[0])
-    method = (
-        len(method).to_bytes(8, 'little', signed=False) +
-        method.encode('utf-8'))
-    self.socket.send(reqnum, method, *utils.pack(data))
+    name = method.encode('utf-8')
+    strlen = len(name).to_bytes(8, 'little', signed=False)
+    self.socket.send(reqnum, strlen, name, *packlib.pack(data))
     self.sendrate[0] += 1
     future = Future(self._step)
     self.futures[reqnum] = future
@@ -72,20 +71,24 @@ class Client:
     return self.socket.close()
 
   def _numinflight(self):
-    return len(x for x in self.futures.values() if not x.don)
+    return len([x for x in self.futures.values() if not x.don])
 
   def _step(self, timeout=None):
     data = self.socket.recv(timeout)  # May raise queue.Empty.
     assert len(data) >= 16, 'Unexpectedly short response'
-    reqnum = int.from_bytes(data[:8], 'little', signed=False)
+    reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
+
+    print('->', reqnum, status)
+
     future = self.futures.pop(reqnum, None)
-    assert future, 'Unexpected request number'
+    assert future, (
+        f'Unexpected request number: {reqnum}', sorted(self.futures.keys()))
     if status == 0:
-      data = utils.unpack(data[16:])
+      data = packlib.unpack(data[16:])
       future.set_result(data)
     else:
-      message = data[16:].decode('utf-8')
+      message = bytes(data[16:]).decode('utf-8')
       future.set_error(message)
       weakref.finalize(future, lambda: self.errors.append(message))
 
@@ -120,7 +123,7 @@ class Future:
     return self.don
 
   def result(self):
-    if self.status == 0:
+    if not self.don:
       self.wait(timeout=None)
     assert self.don
     if self.msg is not None:
