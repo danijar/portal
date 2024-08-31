@@ -1,6 +1,8 @@
-import queue
+import threading
 
+import elements  # TODO
 import numpy as np
+import zerofun
 
 from . import client
 from . import packlib
@@ -8,7 +10,6 @@ from . import process
 from . import server
 from . import server_socket
 from . import sharray
-from . import thread
 from . import utils
 
 
@@ -17,32 +18,36 @@ class BatchServer:
   def __init__(
       self, port, name='Server', workers=1, errors=True, process=True,
       **kwargs):
-
-    self.errors = errors
-    self.kwargs = kwargs
-    port2 = utils.free_port()
-
+    inner_port = utils.free_port()
+    self.server = server.Server(inner_port, name, workers, errors, **kwargs)
+    if process:
+      self.running = zerofun.context().mp.Event()
+    else:
+      self.running = threading.Event()
+    self.process = process
+    self.batsizes = {}
     self.batargs = (
         self.running, port, inner_port, f'{name}Batcher',
-        self.batch_sizes, errors, process)
-    self.batcher = Batcher(port, port2, , errors, **kwargs)
-
-    self.server = server.Server(port2, name, workers, errors, **kwargs)
+        self.batsizes, errors, False, kwargs)
+    self.started = False
 
   def bind(self, name, workfn, donefn=None, batch=0, workers=0):
-    self.batch_sizes[name] = batch
+    assert not self.started
+    self.batsizes[name] = batch
     self.server.bind(name, workfn, donefn, workers=0)
 
   def start(self, block=True):
+    assert not self.started
+    self.started = True
     self.running.set()
     if self.process:
-      self.batcher = process.Process(batcher, *self.batargs, **self.kwargs)
+      self.batcher = process.Process(batcher, *self.batargs, start=True)
     else:
-      self.batcher = process.Thread(batcher, *self.batargs, **self.kwargs)
-    self.batcher.start()
+      self.batcher = process.Thread(batcher, *self.batargs, start=True)
     self.server.start(block=block)
 
   def close(self, timeout=None):
+    assert self.started
     self.running.clear()
     self.server.close(timeout and 0.5 * timeout)
     self.batcher.join(timeout and 0.5 * timeout)
@@ -52,6 +57,7 @@ class BatchServer:
     return self.server.stats()
 
   def __enter__(self):
+    self.start(block=False)
     return self
 
   def __exit__(self, *e):
@@ -59,8 +65,8 @@ class BatchServer:
 
 
 def batcher(
-    running, outer_port, inner_port, name, batch_sizes, errors, shmem,
-    **kwargs):
+    running, outer_port, inner_port, name, batsizes, errors, shmem,
+    kwargs):
 
   outer = server_socket.ServerSocket(outer_port, name, **kwargs)
   inner = client.Client('localhost', inner_port, name, **kwargs)
@@ -70,7 +76,8 @@ def batcher(
   def send_error(addr, reqnum, status, message):
     assert 1 <= status, status
     status = status.to_bytes(8, 'little', signed=False)
-    outer.send(addr, reqnum, status, message)
+    data = message.encode('utf-8')
+    outer.send(addr, reqnum, status, data)
     if errors:
       raise RuntimeError(message)
 
@@ -80,23 +87,24 @@ def batcher(
       if not running.is_set():  # Do not accept further requests.
         break
       try:
+        # TODO: Tune timeouts.
         addr, data = outer.recv(timeout=0.0001)
-      except queue.Empty:
+      except TimeoutError:
         break
       reqnum, data = bytes(data[:8]), data[8:]
       strlen, data = int.from_bytes(data[:8], 'little', signed=False), data[8:]
-      name, data = data[:strlen].decode('utf-8'), data[strlen:]
-      if name not in batch_sizes:
+      name, data = bytes(data[:strlen]).decode('utf-8'), data[strlen:]
+      if name not in batsizes:
         send_error(addr, reqnum, 3, f'Unknown method {name}')
         break
       data = packlib.unpack(data)
-      batch_size = batch_sizes[name]
+      batch_size = batsizes[name]
       if not batch_size:
-        job = inner.call(name, data)
+        job = inner.call(name, *data)
         job.args = (False, addr, reqnum)
         jobs.append(job)
         break
-      leaves, structure = flatten(data)
+      leaves, structure = elements.tree.flatten(data)
       if name not in batches:
         if shmem:
           buffers = [
@@ -124,7 +132,7 @@ def batcher(
         # has responded and then close them. Later, we can also add them to a
         # free list to reuse them.
         del batches[name]
-        data = unflatten(buffers, reference)
+        data = elements.tree.unflatten(buffers, reference)
         job = inner.call(name, data)
         job.args = (True, addrs, reqnums)
         jobs.append(job)
@@ -147,10 +155,11 @@ def batcher(
       status = int(0).to_bytes(8, 'little', signed=True)
       if batched:
         for i, (addr, reqnum) in enumerate(zip(addr, reqnum)):
-          data = packlib.pack(treemap(lambda x: x[i], result))
+          data = packlib.pack(elements.tree.map(lambda x: x[i], result))
           outer.send(addr, reqnum, status, *data)
       else:
-        outer.send(addr, reqnum, status, *result)
+        data = packlib.pack(result)
+        outer.send(addr, reqnum, status, *data)
 
   outer.close()
   inner.close()

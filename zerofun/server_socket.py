@@ -50,7 +50,7 @@ class ServerSocket:
     self.sock.listen()
     self.sel = selectors.DefaultSelector()
     self.sel.register(self.sock, selectors.EVENT_READ, data=None)
-    self._log(f'Listening at {self.addr}')
+    self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')
     self.conns = {}
     self.running = True
     self.received = queue.Queue()  # [(addr, buffer)]
@@ -120,7 +120,7 @@ class ServerSocket:
 
   def _accept(self, sock):
     sock, addr = sock.accept()
-    self._log(f'Accepted connection from {addr}')
+    self._log(f'Accepted connection from {addr[0]}:{addr[1]}')
     sock.setblocking(False)
     conn = Connection(sock, addr)
     self.sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, conn)
@@ -141,7 +141,7 @@ class ServerSocket:
       conn.recvbuf = None
 
   def _disconnect(self, conn):
-    self._log(f'Closing connection to {conn.addr} (Received zero bytes)')
+    self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]}')
     self.sel.unregister(conn.sock)
     del self.conns[conn.addr]
     conn.sock.close()

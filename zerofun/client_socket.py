@@ -58,8 +58,8 @@ class ClientSocket:
 
   def connect(self, timeout=None):
     with self.lock:
-      assert timeout is None or 0 < timeout, 'connect requires non-zero timeout'
-      self._log(f'Connecting to {self.addr}')
+      assert timeout is None or 0 < timeout, 'connect requires timeout'
+      self._log(f'Connecting to {self.addr[0]}:{self.addr[1]}')
       start = time.time()
       self.sock.settimeout(min(max(0.01, timeout), 10) if timeout else 10)
       once = True
@@ -103,7 +103,6 @@ class ClientSocket:
       while True:
         try:
           x = self.received.get(block=True, timeout=0.2)
-          print('RECEIVED')
           return x
         except queue.Empty:
           with self.lock:

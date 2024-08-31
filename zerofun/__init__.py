@@ -18,6 +18,7 @@ from .client_socket import Disconnected
 
 from .client import Client
 from .server import Server
+from .batching import BatchServer
 
 from .packlib import pack
 from .packlib import unpack

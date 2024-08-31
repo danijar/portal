@@ -15,6 +15,9 @@ class Thread:
 
   2. It keeps track of its subthreads and subprocesses and kills them on error
   to prevent hangs.
+
+  3. The thread is marked as daemon, so that when the parent process dies the
+  thread is killed, preventing hangs.
   """
 
   def __init__(self, fn, *args, name=None, start=False):

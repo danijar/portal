@@ -1,3 +1,4 @@
+import atexit
 import time
 
 import cloudpickle
@@ -19,13 +20,16 @@ class Process:
   2. The process terminates its nested child processes when it encounters an
   error. This prevents lingering subprocesses on error.
 
-  3. The Python standard library does not always report the alive state of
-  processes correctly. This process provides a more accurate @running property
-  implemented using psutil.
+  3. When the parent process encounters an error, the subprocess will be killed
+  via `atexit`, preventing hangs.
 
   4. It inherits the context() object of its parent process, which provides
   cloudpickled initializer functions for each nested child process and error
   file watching for global shutdown on error.
+
+  5. The Python standard library does not always report the alive state of
+  processes correctly. This process provides a more accurate @running property
+  implemented using psutil.
   """
 
   def __init__(self, fn, *args, name=None, start=False, context=None):
@@ -37,6 +41,7 @@ class Process:
     self.psutil = None
     context.add_child(self)
     self.started = False
+    atexit.register(self.kill)
     start and self.start()
 
   @property
