@@ -70,7 +70,7 @@ def batcher(
 
   outer = server_socket.ServerSocket(outer_port, name, **kwargs)
   inner = client.Client('localhost', inner_port, name, **kwargs)
-  batches = {}  # {method: ([addr], [reqnum], structure, [sharray])}
+  batches = {}  # {method: ([addr], [reqnum], structure, [array])}
   jobs = []
 
   def send_error(addr, reqnum, status, message):
@@ -105,6 +105,10 @@ def batcher(
         jobs.append(job)
         break
       leaves, structure = elements.tree.flatten(data)
+      leaves = [np.asarray(x) for x in leaves]
+      if any(x.dtype == object for x in leaves):
+        send_error(addr, reqnum, 5, 'Only array arguments can be batched.')
+        break
       if name not in batches:
         if shmem:
           buffers = [
@@ -117,7 +121,7 @@ def batcher(
         batches[name] = ([], [], structure, buffers)
       addrs, reqnums, reference, buffers = batches[name]
       if structure != reference:
-        send_error(addr, reqnum, 5, (
+        send_error(addr, reqnum, 6, (
             f'Argument structure {structure} does not match previous ' +
             f'requests with structure {reference} for batched server ' +
             f'method {name}.'))
@@ -133,7 +137,7 @@ def batcher(
         # free list to reuse them.
         del batches[name]
         data = elements.tree.unflatten(buffers, reference)
-        job = inner.call(name, data)
+        job = inner.call(name, *data)
         job.args = (True, addrs, reqnums)
         jobs.append(job)
       break  # We do not actually want to loop.

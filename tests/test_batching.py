@@ -1,33 +1,38 @@
-import threading
-import time
-
 import numpy as np
-import pytest
 import zerofun
 
-SERVERS = [
-    zerofun.Server,
-]
 
+class TestBatching:
 
-class TestServer:
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_basic(self, Server):
+  def test_single_client(self):
     port = zerofun.free_port()
-    server = Server(port)
+    server = zerofun.BatchServer(port)
     def fn(x):
-      assert x == 42
+      assert x.shape == (4,)
       return 2 * x
-    server.bind('fn', fn)
+    server.bind('fn', fn, batch=4)
     server.start(block=False)
     client = zerofun.Client('localhost', port)
-    future = client.call('fn', 42)
-    assert future.result() == 84
+    futures = [client.fn(x) for x in range(8)]
+    results = [x.result() for x in futures]
+    assert (results == np.arange(0, 16, 2)).all()
     client.close()
     server.close()
 
-  # TODO
+  def test_multiple_clients(self):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port)
+    def fn(x):
+      assert x.shape == (4,)
+      return 2 * x
+    server.bind('fn', fn, batch=4)
+    server.start(block=False)
+    clients = [zerofun.Client('localhost', port) for _ in range(8)]
+    futures = [x.fn(i) for i, x in enumerate(clients)]
+    results = [x.result() for x in futures]
+    assert (results == np.arange(0, 16, 2)).all()
+    [x.close() for x in clients]
+    server.close()
 
   # @pytest.mark.parametrize('Server', SERVERS)
   # @pytest.mark.parametrize('batch', (1, 2, 4))
