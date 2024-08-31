@@ -10,14 +10,15 @@ from . import process
 from . import server
 from . import server_socket
 from . import sharray
+from . import thread
 from . import utils
 
 
 class BatchServer:
 
   def __init__(
-      self, port, name='Server', workers=1, errors=True, process=True,
-      **kwargs):
+      self, port, name='Server', workers=1, errors=True,
+      process=True, shmem=False, **kwargs):
     inner_port = utils.free_port()
     self.server = server.Server(inner_port, name, workers, errors, **kwargs)
     if process:
@@ -28,7 +29,7 @@ class BatchServer:
     self.batsizes = {}
     self.batargs = (
         self.running, port, inner_port, f'{name}Batcher',
-        self.batsizes, errors, False, kwargs)
+        self.batsizes, errors, shmem, kwargs)
     self.started = False
 
   def bind(self, name, workfn, donefn=None, batch=0, workers=0):
@@ -43,7 +44,7 @@ class BatchServer:
     if self.process:
       self.batcher = process.Process(batcher, *self.batargs, start=True)
     else:
-      self.batcher = process.Thread(batcher, *self.batargs, start=True)
+      self.batcher = thread.Thread(batcher, *self.batargs, start=True)
     self.server.start(block=block)
 
   def close(self, timeout=None):

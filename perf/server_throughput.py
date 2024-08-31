@@ -13,6 +13,8 @@ def main():
   def server(port):
     server = zerofun.Server(port)
     # server = zerofun.BatchServer(port)
+    # server = zerofun.BatchServer(port, process=False)
+    # server = zerofun.BatchServer(port, shmem=True)
     def fn(x):
       assert len(x) == size
       return x if twoway else b'ok'
