@@ -9,7 +9,7 @@ class TestErrfile:
 
   def test_file(self, tmpdir):
     errfile = pathlib.Path(tmpdir) / 'error'
-    zerofun.setup(errfile)
+    zerofun.setup(errfile, check_interval=0.1)
     try:
       raise ValueError
     except Exception as e:
@@ -19,7 +19,7 @@ class TestErrfile:
     assert 'Traceback (most recent call last)' in content
     assert 'line' in content
     assert 'in test_file' in content
-    zerofun.context().close()
+    zerofun.close()
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_sibling_procs(self, tmpdir, repeat):
@@ -41,12 +41,13 @@ class TestErrfile:
     worker1.join(3)
     worker2.join(3)
     content = errfile.read_text()
-    assert "Error in 'worker1' (ValueError: payload):" == content.split('\n')[0]
+    first_line = content.split('\n')[0]
+    assert "Error in 'worker1' (ValueError: payload):" == first_line
     assert not worker1.running
     assert not worker2.running
     assert worker1.exitcode == 1
     assert worker2.exitcode == 2
-    zerofun.context().close()
+    zerofun.close()
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_nested_procs(self, tmpdir, repeat):
@@ -75,4 +76,4 @@ class TestErrfile:
     content = errfile.read_text()
     assert "Error in 'inner' (ValueError: payload):" == content.split('\n')[0]
     assert not worker.running
-    zerofun.context().close()
+    zerofun.close()

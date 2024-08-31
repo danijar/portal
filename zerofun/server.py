@@ -23,8 +23,7 @@ class Server:
     self.postfn_pool = poollib.ThreadPool(1, 'pool_postfn')
     self.postfn_inp = collections.deque()
     self.postfn_out = collections.deque()
-    self.sendrate = [0, time.time()]
-    self.recvrate = [0, time.time()]
+    self.metrics = dict(send=0, recv=0, time=time.time())
     self.pools = [self.pool, self.postfn_pool]
 
   def bind(self, name, workfn, postfn=None, workers=0):
@@ -58,11 +57,14 @@ class Server:
 
   def stats(self):
     now = time.time()
+    mets = self.metrics
+    self.metrics = dict(send=0, recv=0, time=now)
+    dur = now - mets['time']
     stats = {
-        'numsend': self.sendrate[0],
-        'numrecv': self.recvrate[0],
-        'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
-        'recvrate': self.recvrate[0] / (now - self.recvrate[1]),
+        'numsend': mets['send'],
+        'numrecv': mets['recv'],
+        'sendrate': mets['send'] / dur,
+        'recvrate': mets['recv'] / dur,
         'jobs': len(self.jobs),
     }
     if any(postfn for _, postfn, _, _ in self.methods.values()):
@@ -70,8 +72,6 @@ class Server:
           'post_iqueue': len(self.postfn_inp),
           'post_oqueue': len(self.postfn_out),
       })
-    self.sendrate = [0, now]
-    self.recvrate = [0, now]
     return stats
 
   def __enter__(self):
@@ -82,7 +82,7 @@ class Server:
     self.close()
 
   def _loop(self):
-    while self.running or self.jobs:
+    while self.running or self.jobs or self.postfn_out:
       while True:  # Loop syntax used to break on error.
         if not self.running:  # Do not accept further requests.
           break
@@ -105,6 +105,7 @@ class Server:
         if name not in self.methods:
           self._error(addr, reqnum, 3, f'Unknown method {name}')
           break
+        self.metrics['recv'] += 1
         workfn, postfn, pool, active = self.methods[name]
         job = pool.submit(workfn, *data)
         job.active = active
@@ -114,8 +115,10 @@ class Server:
         self.jobs.add(job)
         if postfn:
           self.postfn_inp.append(job)
-        self.recvrate[0] += 1
         break  # We do not actually want to loop.
+      # We have to store job promises in an unordered set for this function,
+      # but this also means that if two jobs complete within the same server
+      # loop iteration, they will be retuned to the client in arbitrary order.
       # TODO: Tune the timeout.
       completed, self.jobs = concurrent.futures.wait(
           self.jobs, 0.0001, concurrent.futures.FIRST_COMPLETED)
@@ -129,7 +132,7 @@ class Server:
           data = packlib.pack(data)
           status = int(0).to_bytes(8, 'little', signed=False)
           self.socket.send(job.addr, job.reqnum, status, *data)
-          self.sendrate[0] += 1
+          self.metrics['send'] += 1
         except Exception as e:
           self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
       if completed:

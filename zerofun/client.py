@@ -113,8 +113,9 @@ class Client:
       future.set_result(data)
     else:
       message = bytes(data[16:]).decode('utf-8')
+      raised = [False]
       future.set_error(message)
-      raised = future.raised
+      future.raised = raised
       weakref.finalize(future, lambda: (
           None if raised[0] else self.errors.append(message)))
 
@@ -123,7 +124,7 @@ class Future:
 
   def __init__(self, waitfn):
     self.waitfn = waitfn
-    self.raised = [False]
+    self.raised = None
     self.don = False
     self.res = None
     self.msg = None

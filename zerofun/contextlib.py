@@ -27,6 +27,11 @@ def context():
     CONTEXT = Context(None)
   return CONTEXT
 
+def close():
+  global CONTEXT
+  context().close()
+  CONTEXT = None
+
 
 class Context:
 

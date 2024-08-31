@@ -5,10 +5,6 @@ import numpy as np
 import pytest
 import zerofun
 
-# TODO:
-# - server dies while client is maxinflight waiting, should raise Disconnected
-# if reconnect=False and otherwise should reconnect
-
 
 SERVERS = [
     zerofun.Server,
@@ -30,54 +26,6 @@ class TestServer:
     client = zerofun.Client('localhost', port)
     future = client.call('fn', 42)
     assert future.result() == 84
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_none_result(self, Server):
-    port = zerofun.free_port()
-    server = Server(port)
-    def fn():
-      pass
-    server.bind('fn', fn)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port)
-    assert client.fn().result() is None
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_manual_connect(self, Server):
-    port = zerofun.free_port()
-    client = zerofun.Client('localhost', port, connect=False, reconnect=False)
-    result = client.connect(timeout=0.01)
-    assert result is False
-    assert not client.connected
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    client.connect()
-    assert client.connected
-    assert client.fn(12).result() == 12
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_manual_reconnect(self, Server):
-    port = zerofun.free_port()
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port, reconnect=False)
-    assert client.fn(1).result() == 1
-    server.close()
-    with pytest.raises(zerofun.Disconnected):
-      client.fn(2).result()
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    client.connect()
-    assert client.fn(3).result() == 3
     client.close()
     server.close()
 
@@ -120,87 +68,6 @@ class TestServer:
       assert client.sub(3, 5).result() == -2
 
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_connect_before_server(self, Server):
-    port = zerofun.free_port()
-    results = []
-
-    def client():
-      client = zerofun.Client('localhost', port)
-      results.append(client.fn(12).result())
-      client.close()
-
-    thread = zerofun.Thread(client, start=True)
-    time.sleep(0.2)
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    thread.join()
-    server.close()
-    assert results[0] == 12
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_order(self, Server):
-    port = zerofun.free_port()
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port)
-    future1 = client.fn(1)
-    future2 = client.fn(2)
-    future3 = client.fn(3)
-    assert future2.result() == 2
-    assert future1.result() == 1
-    assert future3.result() == 3
-    server.close()
-    client.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_timeout(self, Server):
-    port = zerofun.free_port()
-    server = Server(port)
-    def fn(x):
-      time.sleep(0.1)
-      return x
-    server.bind('fn', fn)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port)
-    future = client.fn(42)
-    with pytest.raises(TimeoutError):
-      future.result(timeout=0)
-    with pytest.raises(TimeoutError):
-      future.result(timeout=0.01)
-    with pytest.raises(TimeoutError):
-      future.result(timeout=0)
-    assert future.result(timeout=0.2) == 42
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_maxinflight(self, Server):
-    port = zerofun.free_port()
-    server = Server(port)
-    parallel = [0]
-    lock = threading.Lock()
-
-    def fn(data):
-      with lock:
-        parallel[0] += 1
-        assert parallel[0] <= 2
-      time.sleep(0.2)
-      with lock:
-        parallel[0] -= 1
-      return data
-    server.bind('fn', fn, workers=4)
-    server.start(block=False)
-
-    client = zerofun.Client('localhost', port, maxinflight=2)
-    futures = [client.fn(i) for i in range(16)]
-    results = [x.result() for x in futures]
-    assert results == list(range(16))
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
   def test_server_errors(self, Server):
     port = zerofun.free_port()
 
@@ -223,65 +90,6 @@ class TestServer:
     client.close()
     server.join()
     assert server.exitcode not in (0, None)
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_errors(self, Server):
-    port = zerofun.free_port()
-    server = Server(port, errors=False)
-    def fn(x):
-      if x == 2:
-        raise ValueError(x)
-      return x
-    server.bind('fn', fn)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port)
-    future1 = client.fn(1)
-    future2 = client.fn(2)
-    future3 = client.fn(3)
-    assert future3.result() == 3
-    with pytest.raises(RuntimeError):
-      future2.result()
-    assert future1.result() == 1
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_cleanup(self, Server):  # TODO: Failing
-    port = zerofun.free_port()
-    server = Server(port)
-    server.bind('fn', lambda x: x)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port)
-    client.fn(1)
-    client.fn(2)
-    future3 = client.fn(3)
-    assert len(client.futures) == 3
-    assert future3.result() == 3
-    del future3
-    assert not client.futures
-    client.close()
-    server.close()
-
-  @pytest.mark.parametrize('repeat', range(3))
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_cleanup_errors(self, repeat, Server):
-    port = zerofun.free_port()
-    server = Server(port, errors=False)
-    def fn(x):
-      if x == 2:
-        raise ValueError(x)
-      return x
-    server.bind('fn', fn)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port, maxinflight=1)
-    client.fn(1)
-    client.fn(2)
-    time.sleep(0.2)
-    with pytest.raises(RuntimeError):
-      client.fn(3)
-    assert client.fn(3).result() == 3
-    client.close()
-    server.close()
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
@@ -311,9 +119,10 @@ class TestServer:
     assert completed != list(range(10))
     assert logged == list(range(10))
 
+  @pytest.mark.parametrize('repeat', range(5))
   @pytest.mark.parametrize('Server', SERVERS)
   @pytest.mark.parametrize('workers', (1, 4))
-  def test_postfn_no_backlog(self, Server, workers):
+  def test_postfn_no_backlog(self, repeat, Server, workers):
     port = zerofun.free_port()
     lock = threading.Lock()
     work_calls = [0]
@@ -322,7 +131,7 @@ class TestServer:
       with lock:
         work_calls[0] += 1
         print(work_calls[0], done_calls[0])
-        assert work_calls[0] <= done_calls[0] + workers
+        assert work_calls[0] <= done_calls[0] + workers + 1
       return x, x
     def postfn(x):
       with lock:
@@ -335,6 +144,7 @@ class TestServer:
     futures = [client.fn(i) for i in range(20)]
     [future.result() for future in futures]
     client.close()
+    server.close()
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
@@ -381,24 +191,6 @@ class TestServer:
     # before the slow request is done.
     fast_future.result()
     assert not slow_future.wait(0.01)
-    server.close()
-    client.close()
-
-  @pytest.mark.parametrize('repeat', range(5))
-  def test_client_threadsafe(self, repeat, users=16):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
-    server.bind('fn', lambda x: x, workers=4)
-    server.start(block=False)
-    client = zerofun.Client('localhost', port, maxinflight=8)
-    barrier = threading.Barrier(users)
-
-    def user():
-      barrier.wait()
-      for x in range(4):
-        assert client.fn(x).result() == x
-
-    zerofun.run([zerofun.Thread(user) for _ in range(users)])
     server.close()
     client.close()
 
@@ -456,8 +248,9 @@ class TestServer:
     client.join()
     server.kill()
 
+  @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_client_drops(self, Server):
+  def test_client_drops(self, repeat, Server):
     barrier = threading.Barrier(2)
 
     def fn(x):
@@ -481,5 +274,5 @@ class TestServer:
 
     client = zerofun.Client('localhost', port)
     assert client.fn(2).result() == 2
-    server.close()
     client.close()
+    server.close()

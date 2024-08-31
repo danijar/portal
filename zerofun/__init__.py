@@ -6,8 +6,9 @@ try:
 except RuntimeError:
   pass
 
-from .contextlib import setup
+from .contextlib import close
 from .contextlib import context
+from .contextlib import setup
 
 from .thread import Thread
 from .process import Process

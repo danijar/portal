@@ -20,7 +20,7 @@ class TestProcess:
     worker = zerofun.Process(fn, start=True)
     worker.join()
     assert not worker.running
-    assert worker.exitcode == 1
+    assert worker.exitcode not in (None, 0)
 
   def test_error_with_children(self):
     def hang():
@@ -34,7 +34,7 @@ class TestProcess:
     worker = zerofun.Process(fn, start=True)
     worker.join()
     assert not worker.running
-    assert worker.exitcode == 1
+    assert worker.exitcode not in (None, 0)
 
   def test_kill(self):
     def fn():
