@@ -48,6 +48,7 @@ class ClientSocket:
     self.sending = collections.deque()
     self.received = queue.Queue()
     self.running = True
+    self.lock = threading.Lock()
     self.thread = thread.Thread(self._loop, start=True)
     connect and self.connect()
 
@@ -56,58 +57,69 @@ class ClientSocket:
     return self.isconnected.is_set()
 
   def connect(self, timeout=None):
-    assert timeout is None or 0 < timeout
-    self._log(f'Connecting to {self.addr}')
-    start = time.time()
-    self.sock.settimeout(10)
-    once = True
-    while True:
-      try:
-        addr = contextlib.context().resolver(self.addr)
-        self.sock.connect(addr)
-        self.sock.settimeout(0)
-        self.isconnected.set()
-        self._log('Connection established')
-        return True
-      except ConnectionError:
-        pass
-      except TimeoutError:
-        pass
-      if timeout and time.time() - start >= timeout:
-        return False
-      if once:
-        self._log('Still trying to connect...')
-        once = False
+    with self.lock:
+      assert timeout is None or 0 < timeout, 'connect requires non-zero timeout'
+      self._log(f'Connecting to {self.addr}')
+      start = time.time()
+      self.sock.settimeout(min(max(0.01, timeout), 10) if timeout else 10)
+      once = True
+      while True:
+        try:
+          addr = contextlib.context().resolver(self.addr)
+          self.sock.connect(addr)
+          self.sock.settimeout(0)
+          self.isconnected.set()
+          self._log('Connection established')
+          return True
+        except ConnectionError:
+          pass
+        except TimeoutError:
+          pass
+        if timeout and time.time() - start >= timeout:
+          return False
+        if once:
+          self._log('Still trying to connect...')
+          once = False
 
   def send(self, *data):
-    assert self.running
-    self._require_connection()
-    while len(self.sending) > self.options.max_send_queue:
-      raise RuntimeError('Too many outgoing messages enqueued')
-    maxsize = self.options.max_msg_size
-    self.sending.append(buffers.SendBuffer(*data, maxsize=maxsize))
+    with self.lock:
+      assert self.running
+      self._require_connection()
+      if len(self.sending) > self.options.max_send_queue:
+        raise RuntimeError('Too many outgoing messages enqueued')
+      maxsize = self.options.max_msg_size
+      self.sending.append(buffers.SendBuffer(*data, maxsize=maxsize))
 
   def recv(self, timeout=None):
     assert self.running
-    self._require_connection()
-    if timeout == 0:
-      return self.received.get(block=False)
-    if timeout and timeout <= 1:
-      return self.received.get(block=True, timeout=timeout)
-    start = time.time()
-    while True:
-      try:
-        return self.received.get(block=True, timeout=0.1)
-      except queue.Empty:
-        self._require_connection()
-        if timeout and time.time() - start >= timeout:
-          raise
+    with self.lock:
+      self._require_connection()
+    try:
+      if timeout == 0:
+        return self.received.get(block=False)
+      if timeout and timeout <= 0.2:
+        return self.received.get(block=True, timeout=timeout)
+      start = time.time()
+      while True:
+        try:
+          x = self.received.get(block=True, timeout=0.2)
+          print('RECEIVED')
+          return x
+        except queue.Empty:
+          with self.lock:
+            self._require_connection()
+          if timeout and time.time() - start >= timeout:
+            raise
+    except queue.Empty:
+      raise TimeoutError
 
   def close(self, timeout=None):
-    self.running = False
-    self.thread.join(timeout)
-    self.sock.close()
-    self.sel.close()
+    with self.lock:
+      self.running = False
+      self.thread.join(timeout)
+      self.thread.kill()
+      self.sock.close()
+      self.sel.close()
 
   def _require_connection(self):
     if self.isconnected.is_set():
@@ -121,7 +133,8 @@ class ClientSocket:
   def _loop(self):
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     while self.running or (self.sending and self.isconnected.is_set()):
-      self.isconnected.wait()
+      if not self.isconnected.wait(0.2):
+        continue
       try:
         ready = tuple(self.sel.select(timeout=0.2))
         if not ready:

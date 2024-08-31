@@ -53,10 +53,10 @@ class ServerSocket:
     self._log(f'Listening at {self.addr}')
     self.conns = {}
     self.running = True
-    self.event = threading.Event()
-    self.thread = thread.Thread(self._loop, start=True)
     self.received = queue.Queue()  # [(addr, buffer)]
     self.sending = collections.deque()  # [(addr, SendBuffer)]
+    self.event = threading.Event()
+    self.thread = thread.Thread(self._loop, start=True)
 
   @property
   def connections(self):
@@ -64,7 +64,10 @@ class ServerSocket:
 
   def recv(self, timeout=None):
     assert self.running
-    return self.received.get(block=(timeout != 0), timeout=timeout)
+    try:
+      return self.received.get(block=(timeout != 0), timeout=timeout)
+    except queue.Empty:
+      raise TimeoutError
 
   def send(self, addr, *data):
     assert self.running

@@ -1,3 +1,4 @@
+import collections
 import functools
 import itertools
 import time
@@ -17,10 +18,14 @@ class Client:
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
-    self.errors = []
+    self.errors = collections.deque()
     self.sendrate = [0, time.time()]
     self.recvrate = [0, time.time()]
     self.waitmean = [0, 0]
+
+    # TODO
+    import threading
+    self.lock = threading.Lock()
 
   @property
   def connected(self):
@@ -38,6 +43,8 @@ class Client:
     now = time.time()
     stats = {
         'inflight': self._numinflight(),
+        'numrecv': self.sendrate[0],
+        'numsend': self.recvrate[0],
         'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
         'recvrate': self.recvrate[0] / (now - self.recvrate[1]),
         'waitmean': self.waitmean[0] and (self.waitmean[1] / self.waitmean[0]),
@@ -53,17 +60,19 @@ class Client:
   def call(self, method, *data):
     reqnum = next(self.reqnum).to_bytes(8, 'little', signed=False)
     start = time.time()
-    while self._numinflight() >= self.maxinflight:
-      self._step(timeout=None)
-    self.waitmean[1] += time.time() - start
-    self.waitmean[0] += 1
+    if self._numinflight() >= self.maxinflight:
+      self._wait(lambda: self._numinflight() < self.maxinflight)
+    with self.lock:
+      self.waitmean[1] += time.time() - start
+      self.waitmean[0] += 1
     if self.errors:  # Raise errors of dropped futures.
-      raise RuntimeError(self.errors[0])
+      raise RuntimeError(self.errors.popleft())
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
     self.socket.send(reqnum, strlen, name, *packlib.pack(data))
-    self.sendrate[0] += 1
-    future = Future(self._step)
+    with self.lock:
+      self.sendrate[0] += 1
+    future = Future(self._wait)
     self.futures[reqnum] = future
     return future
 
@@ -73,57 +82,72 @@ class Client:
   def _numinflight(self):
     return len([x for x in self.futures.values() if not x.don])
 
-  def _step(self, timeout=None):
-    data = self.socket.recv(timeout)  # May raise queue.Empty.
+  def _wait(self, until, timeout=None):
+    # TODO: This waiting function isn't ideal when there are multiple threads
+    # waiting at the same time. The problem is that other threads may render
+    # the until() condition true for us but we won't notice until 0.1 seconds
+    # later if there are no other incoming messages.
+    inner = 0.1 if timeout is None else min(timeout, 0.1)
+    if timeout not in (0, None):
+      start = time.time()
+    while not until():
+      try:
+        data = self.socket.recv(inner)
+        self._process(data)
+      except TimeoutError:
+        if timeout == 0:
+          raise
+        if timeout is None:
+          continue
+        if time.time() - start >= timeout:
+          raise
+
+  def _process(self, data):
     assert len(data) >= 16, 'Unexpectedly short response'
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
     future = self.futures.pop(reqnum, None)
     assert future, (
-        f'Unexpected request number: {reqnum}', sorted(self.futures.keys()))
+        f'Unexpected request number: {reqnum}',
+        sorted(self.futures.keys()))
     if status == 0:
       data = packlib.unpack(data[16:])
       future.set_result(data)
     else:
       message = bytes(data[16:]).decode('utf-8')
       future.set_error(message)
-      weakref.finalize(future, lambda: self.errors.append(message))
+      raised = future.raised
+      weakref.finalize(future, lambda: (
+          None if raised[0] else self.errors.append(message)))
 
 
 class Future:
 
-  def __init__(self, step):
-    self.step = step
+  def __init__(self, waitfn):
+    self.waitfn = waitfn
+    self.raised = [False]
     self.don = False
     self.res = None
     self.msg = None
 
   def wait(self, timeout=None):
-    if timeout is None:
-      while not self.don:
-        self.step(timeout=None)
-      assert self.don
+    if self.don:
       return True
-    start = time.time()
-    while True:
-      remaining = timeout - (time.time() - start)
-      self.step(timeout=max(0, remaining))
-      if self.don:
-        return True
-      if remaining <= 0:
-        break
-    return False
-
-  def done(self):
-    if not self.don:
-      self.wait(timeout=0)
+    try:
+      self.waitfn(lambda: self.don, timeout)
+    except TimeoutError:
+      pass
     return self.don
 
-  def result(self):
-    if not self.don:
-      self.wait(timeout=None)
+  def done(self):
+    return self.wait(timeout=0)
+
+  def result(self, timeout=None):
+    if not self.wait(timeout):
+      raise TimeoutError
     assert self.don
     if self.msg is not None:
+      self.raised[0] = True
       raise RuntimeError(self.msg)
     return self.res
 

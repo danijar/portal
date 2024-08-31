@@ -12,7 +12,7 @@ def run(workers, duration=None):
   [None if x.started else x.start() for x in workers]
   start = time.time()
   while True:
-    time.sleep(0.5)
+    time.sleep(0.1)
     if duration and time.time() - start >= duration:
       print(f'Shutting down workers after {duration} seconds.')
       [x.kill() for x in workers]
