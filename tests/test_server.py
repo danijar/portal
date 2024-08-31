@@ -5,6 +5,10 @@ import numpy as np
 import pytest
 import zerofun
 
+# TODO:
+# - server dies while client is maxinflight waiting, should raise Disconnected
+# if reconnect=False and otherwise should reconnect
+
 
 SERVERS = [
     zerofun.Server,

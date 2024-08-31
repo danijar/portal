@@ -8,7 +8,7 @@ import zerofun
 BATCH_SERVERS = [
     zerofun.BatchServer,
     functools.partial(zerofun.BatchServer, process=False),
-    # functools.partial(zerofun.BatchServer, shmem=True),  # TODO
+    functools.partial(zerofun.BatchServer, shmem=True),  # TODO
 ]
 
 

@@ -94,47 +94,39 @@ class TestSocket:
   @pytest.mark.parametrize('repeat', range(3))
   def test_server_dies(self, repeat):
     port = zerofun.free_port()
-    ready = zerofun.context().mp.Semaphore(0)
     q = zerofun.context().mp.Queue()
 
-    def server_fn(ready, port, q):
+    def server_fn(port, q):
       server = zerofun.ServerSocket(port)
-      ready.release()
-      q.put(bytes(server.recv()[1]))
-      server.close()
+      q.put(bytes(server.recv()[1]))  # Receive one message.
+      return  # Exit without server.close().
 
-    def client_fn(ready, port, q):
+    def client_fn(port, q):
       client = zerofun.ClientSocket(
           'localhost', port,
           connect=True, reconnect=False,
           keepalive_after=1,
           keepalive_every=1,
           keepalive_fails=1)
-      ready.release()
       try:
         while True:
-          client.send(b'foo')
+          client.send(b'method')
           time.sleep(0.1)
       except zerofun.Disconnected:
-        q.put(b'disconnected')
+        q.put(b'bye')
         client.connect(timeout=None)
-        client.send(b'reconnected')
+        client.send(b'hi')
       client.close()
 
-    server = zerofun.Process(server_fn, ready, port, q, start=True)
-    client = zerofun.Process(client_fn, ready, port, q, start=True)
-    ready.acquire()
-    ready.acquire()
-    # NOTE: We kill the server process to close the server without closing its
-    # connection propertly. However, because connections are handled by the
-    # operationg system, the connection is actually still closed explicitly.
-    # It's not clear how to unit test the keepalive timeouts.
-    server.kill()
-    assert q.get() == b'disconnected'
-    server = zerofun.Process(server_fn, ready, port, q, start=True)
-    assert q.get() == b'reconnected'
+    server = zerofun.Process(server_fn, port, q, start=True)
+    client = zerofun.Process(client_fn, port, q, start=True)
+    server.join()
+    assert q.get() == b'method'
+    assert q.get() == b'bye'
+    server = zerofun.Process(server_fn, port, q, start=True)
     server.join()
     client.join()
+    assert q.get() == b'hi'
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_twoway(self, repeat, size=1024 ** 2, prefetch=16):
