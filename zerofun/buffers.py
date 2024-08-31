@@ -28,7 +28,7 @@ class SendBuffer:
     first, *others = self.buffers
     assert self.pos < len(first)
     size = os.writev(sock.fileno(), [memoryview(first)[self.pos:], *others])
-    if size == 0:  # TODO
+    if size == 0:
       raise ConnectionResetError
     assert 0 <= size, size
     self.pos += max(0, size)

@@ -63,7 +63,7 @@ class Thread:
     start = time.time()
     children = contextlib.context().get_children(self.ident)
     [x.kill(max(0.1, timeout - (time.time() - start))) for x in children]
-    utils.kill_thread(self.thread, max(0.1, timeout - (time.time() - start)))
+    utils.kill_threads(self.thread, max(0.1, timeout - (time.time() - start)))
     return self
 
   def __repr__(self):

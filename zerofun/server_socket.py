@@ -84,7 +84,7 @@ class ServerSocket:
     self.sel.close()
 
   def _loop(self):
-    while self.running:
+    while self.running or self.sending:
       writeable = set()
       for key, mask in self.sel.select(timeout=0.2):
         if key.data is None:
@@ -97,16 +97,16 @@ class ServerSocket:
       remaining = []
       for _ in range(len(self.sending)):
         addr, sendbuf = self.sending.popleft()
+        conn = self.conns.get(addr, None)
+        if not conn:
+          self._log('Dropping messages to disconnected client')
+          continue
         if addr not in writeable:
           remaining.append((addr, sendbuf))
           continue
         # Prevent later buffers from being written before the first buffer for
         # each address is fully written. This would cause mingled data.
         writeable.remove(addr)
-        conn = self.conns.get(addr, None)
-        if not conn:
-          self._log('Dropping messages to disconnected client')
-          continue
         try:
           sendbuf.send(conn.sock)
           if not sendbuf.done():
@@ -115,7 +115,6 @@ class ServerSocket:
           self._disconnect(conn)
         except BlockingIOError:
           remaining.append((addr, sendbuf))
-
       self.sending.extendleft(reversed(remaining))
 
   def _accept(self, sock):

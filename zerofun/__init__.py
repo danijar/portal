@@ -28,6 +28,6 @@ from .packlib import tree_equals
 from .sharray import SharedArray
 
 from .utils import free_port
-from .utils import kill_proc
-from .utils import kill_thread
+from .utils import kill_procs
+from .utils import kill_threads
 from .utils import run

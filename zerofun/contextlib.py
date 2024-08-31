@@ -100,12 +100,12 @@ class Context:
         f.write(message.encode('utf-8'))
 
   def shutdown(self, exitcode):
-    utils.kill_proc(psutil.Process().children(recursive=True))
+    utils.kill_procs(psutil.Process().children(recursive=True))
     os._exit(exitcode)
 
   def close(self):
     if self.watcher:
-      utils.kill_thread(self.watcher)
+      utils.kill_threads(self.watcher)
 
   def add_child(self, worker):
     parent = threading.get_ident()

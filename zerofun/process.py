@@ -1,5 +1,4 @@
 import atexit
-import time
 
 import cloudpickle
 import psutil
@@ -26,19 +25,14 @@ class Process:
   4. It inherits the context() object of its parent process, which provides
   cloudpickled initializer functions for each nested child process and error
   file watching for global shutdown on error.
-
-  5. The Python standard library does not always report the alive state of
-  processes correctly. This process provides a more accurate @running property
-  implemented using psutil.
   """
 
   def __init__(self, fn, *args, name=None, start=False, context=None):
-    fn = cloudpickle.dumps(fn)
     name = name or getattr(fn, '__name__', 'process')
+    fn = cloudpickle.dumps(fn)
     context = context or contextlib.context()
     self.process = context.mp.Process(
         target=self._wrapper, name=name, args=(context, name, fn, args))
-    self.psutil = None
     context.add_child(self)
     self.started = False
     atexit.register(self.kill)
@@ -56,18 +50,12 @@ class Process:
   def running(self):
     if not self.started:
       return False
-    try:
-      alive = self.psutil.status() != psutil.STATUS_ZOMBIE
-      return self.psutil.is_running() and alive
-    except psutil.NoSuchProcess:
-      return False
+    return self.process.is_alive()
 
   @property
   def exitcode(self):
     if not self.started or self.running:
       return None
-    elif self.process.exitcode is None:
-      return 2
     else:
       return self.process.exitcode
 
@@ -76,7 +64,6 @@ class Process:
     self.started = True
     self.process.start()
     assert self.pid is not None
-    self.psutil = psutil.Process(self.pid)
     return self
 
   def join(self, timeout=None):
@@ -84,11 +71,16 @@ class Process:
       self.process.join(timeout)
     return self
 
-  def kill(self, timeout=3):
-    start = time.time()
+  def kill(self, timeout=1):
+    try:
+      proc = psutil.Process(self.pid)
+      tree = [proc] + list(proc.children(recursive=True))
+    except psutil.NoSuchProcess:
+      tree = []
     self.process.terminate()
-    utils.kill_proc(self.pid, timeout)
-    self.process.join(max(0, timeout - (time.time() - start)))
+    self.process.join(timeout / 2)
+    self.process.kill()
+    utils.kill_procs(tree, timeout / 2)
     return self
 
   def __repr__(self):

@@ -23,12 +23,14 @@ def run(workers, duration=None):
     errored = [x for x in workers if x.exitcode not in (None, 0)]
     if errored:
       time.sleep(0.1)  # Wait for workers to print their error messages.
-      print(f'Shutting down workers due to crash in {errored[0].name}.')
+      name = errored[0].name
+      code = errored[0].exitcode
+      print(f"Shutting down workers due to crash in '{name}' ({code}).")
       [x.kill() for x in workers]
       raise RuntimeError
 
 
-def kill_thread(threads, timeout=3):
+def kill_threads(threads, timeout=3):
   threads = threads if isinstance(threads, (list, tuple)) else [threads]
   threads = [x for x in threads if x is not threading.main_thread()]
   for thread in threads:
@@ -50,7 +52,7 @@ def kill_thread(threads, timeout=3):
       print('Killed thread is still alive.')
 
 
-def kill_proc(procs, timeout=3):
+def kill_procs(procs, timeout=3):
   def eachproc(fn, procs):
     result = []
     for proc in list(procs):
