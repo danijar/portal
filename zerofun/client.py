@@ -1,6 +1,7 @@
 import collections
 import functools
 import itertools
+import threading
 import time
 import weakref
 
@@ -22,9 +23,6 @@ class Client:
     self.sendrate = [0, time.time()]
     self.recvrate = [0, time.time()]
     self.waitmean = [0, 0]
-
-    # TODO
-    import threading
     self.lock = threading.Lock()
 
   @property

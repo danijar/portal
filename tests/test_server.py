@@ -172,6 +172,8 @@ class TestServer:
     with pytest.raises(TimeoutError):
       future.result(timeout=0)
     assert future.result(timeout=0.2) == 42
+    client.close()
+    server.close()
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_maxinflight(self, Server):
@@ -244,7 +246,7 @@ class TestServer:
     server.close()
 
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_future_cleanup(self, Server):
+  def test_future_cleanup(self, Server):  # TODO: Failing
     port = zerofun.free_port()
     server = Server(port)
     server.bind('fn', lambda x: x)
@@ -332,6 +334,7 @@ class TestServer:
     client = zerofun.Client('localhost', port)
     futures = [client.fn(i) for i in range(20)]
     [future.result() for future in futures]
+    client.close()
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
