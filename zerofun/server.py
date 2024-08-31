@@ -1,6 +1,6 @@
 import collections
 import concurrent.futures
-import queue
+import threading
 import time
 
 from . import packlib
@@ -16,15 +16,16 @@ class Server:
     self.loop = thread.Thread(self._loop)
     self.methods = {}
     self.jobs = set()
-    self.pool = poollib.ThreadPool(workers, 'pool_default')
-    self.pools = [self.pool]
+    self.workers = workers
     self.errors = errors
     self.running = False
+    self.pool = poollib.ThreadPool(workers, 'pool_default')
     self.postfn_pool = poollib.ThreadPool(1, 'pool_postfn')
-    self.postfn_iqueue = collections.deque()
-    self.postfn_oqueue = collections.deque()
+    self.postfn_inp = collections.deque()
+    self.postfn_out = collections.deque()
     self.sendrate = [0, time.time()]
     self.recvrate = [0, time.time()]
+    self.pools = [self.pool, self.postfn_pool]
 
   def bind(self, name, workfn, postfn=None, workers=0):
     assert not self.running
@@ -34,7 +35,11 @@ class Server:
       self.pools.append(pool)
     else:
       pool = self.pool
-    self.methods[name] = (workfn, postfn, pool)
+    active = threading.Semaphore((workers or self.workers) + 1)
+    def workfn2(*args):
+      active.acquire()
+      return workfn(*args)
+    self.methods[name] = (workfn2, postfn, pool, active)
 
   def start(self, block=True):
     assert not self.running
@@ -54,16 +59,16 @@ class Server:
   def stats(self):
     now = time.time()
     stats = {
-        'numrecv': self.sendrate[0],
-        'numsend': self.recvrate[0],
+        'numsend': self.sendrate[0],
+        'numrecv': self.recvrate[0],
         'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
         'recvrate': self.recvrate[0] / (now - self.recvrate[1]),
         'jobs': len(self.jobs),
     }
-    if any(postfn for _, postfn, _ in self.methods.values()):
+    if any(postfn for _, postfn, _, _ in self.methods.values()):
       stats.update({
-          'post_iqueue': len(self.postfn_iqueue),
-          'post_oqueue': len(self.postfn_oqueue),
+          'post_iqueue': len(self.postfn_inp),
+          'post_oqueue': len(self.postfn_out),
       })
     self.sendrate = [0, now]
     self.recvrate = [0, now]
@@ -100,15 +105,15 @@ class Server:
         if name not in self.methods:
           self._error(addr, reqnum, 3, f'Unknown method {name}')
           break
-        workfn, postfn, pool = self.methods[name]
+        workfn, postfn, pool, active = self.methods[name]
         job = pool.submit(workfn, *data)
+        job.active = active
         job.postfn = postfn
         job.addr = addr
         job.reqnum = reqnum
         self.jobs.add(job)
         if postfn:
-          # TODO: Somehow block if postfn is lagging behind?
-          self.postfn_iqueue.append(job)
+          self.postfn_inp.append(job)
         self.recvrate[0] += 1
         break  # We do not actually want to loop.
       # TODO: Tune the timeout.
@@ -119,6 +124,8 @@ class Server:
           data = job.result()
           if job.postfn:
             data, info = data
+          else:
+            job.active.release()
           data = packlib.pack(data)
           status = int(0).to_bytes(8, 'little', signed=False)
           self.socket.send(job.addr, job.reqnum, status, *data)
@@ -126,12 +133,16 @@ class Server:
         except Exception as e:
           self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
       if completed:
-        while self.postfn_iqueue and self.postfn_iqueue[0].done():
-          job = self.postfn_iqueue.popleft()
+        while self.postfn_inp and self.postfn_inp[0].done():
+          job = self.postfn_inp.popleft()
           data, info = job.result()
-          self.postfn_oqueue.append(self.postfn_pool.submit(job.postfn, info))
-      while self.postfn_oqueue and self.postfn_oqueue[0].done():
-        self.postfn_oqueue.popleft().result()  # Check if there was an error.
+          postjob = self.postfn_pool.submit(job.postfn, info)
+          postjob.active = job.active
+          self.postfn_out.append(postjob)
+      while self.postfn_out and self.postfn_out[0].done():
+        postjob = self.postfn_out.popleft()
+        postjob.active.release()
+        postjob.result()  # Check if there was an error.
 
   def _error(self, addr, reqnum, status, message):
     status = status.to_bytes(8, 'little', signed=False)

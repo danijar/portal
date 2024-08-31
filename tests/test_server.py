@@ -1,4 +1,3 @@
-import queue
 import threading
 import time
 
@@ -78,34 +77,6 @@ class TestServer:
     assert client.fn(3).result() == 3
     client.close()
     server.close()
-
-  @pytest.mark.parametrize('Server', SERVERS)
-  def test_sharray(self, Server):
-
-    def server(port):
-      server = Server(port)
-      def fn(data):
-        assert data.array.shape == (3, 2)
-        assert data.array.dtype == np.float32
-        return data
-      server.bind('fn', fn)
-      server.start(block=True)
-
-    def client(port):
-      data = zerofun.SharedArray((3, 2), np.float32)
-      data.array[:] = np.arange(6, dtype=np.float32).reshape(3, 2)
-      client = zerofun.Client('localhost', port)
-      result = client.call('fn', data).result()
-      assert result.name == data.name
-      assert result, data
-      client.close()
-      data.close()
-
-    port = zerofun.free_port()
-    client = zerofun.Process(client, port, start=True)
-    server = zerofun.Process(server, port, start=True)
-    client.join()
-    server.kill()
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_server_scope(self, Server):
@@ -307,8 +278,9 @@ class TestServer:
     client.close()
     server.close()
 
+  @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_postfn_ordered(self, Server):
+  def test_postfn_ordered(self, repeat, Server):
     completed = []
     logged = []
 
@@ -325,38 +297,38 @@ class TestServer:
     server = Server(port, workers=4)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
-
     client = zerofun.Client('localhost', port)
     futures = [client.fn(x) for x in range(10)]
     results = [x.result() for x in futures]
+    server.close()
+    client.close()
     assert results == list(range(10))
     assert completed != list(range(10))
     assert logged == list(range(10))
 
-  # TODO
-
-  # @pytest.mark.parametrize('Server', SERVERS)
-  # @pytest.mark.parametrize('workers', (1, 4))
-  # def test_postfn_no_backlog(self, Server, addr, workers):
-  #   addr = addr.format(port=zerofun.get_free_port())
-  #   lock = threading.Lock()
-  #   work_calls = [0]
-  #   done_calls = [0]
-  #   def workfn(data):
-  #     with lock:
-  #       work_calls[0] += 1
-  #       assert work_calls[0] <= done_calls[0] + 2 * workers
-  #     return data, data
-  #   def postfn(data):
-  #     with lock:
-  #       done_calls[0] += 1
-  #     time.sleep(0.01)
-  #   server = Server(addr, workers=workers)
-  #   server.bind('function', workfn, postfn)
-  #   with server:
-  #     client = zerofun.Client(addr, pings=0, maxage=1, connect=True)
-  #     futures = [client.function({'i': i}) for i in range(20)]
-  #     [future.result() for future in futures]
+  @pytest.mark.parametrize('Server', SERVERS)
+  @pytest.mark.parametrize('workers', (1, 4))
+  def test_postfn_no_backlog(self, Server, workers):
+    port = zerofun.free_port()
+    lock = threading.Lock()
+    work_calls = [0]
+    done_calls = [0]
+    def workfn(x):
+      with lock:
+        work_calls[0] += 1
+        print(work_calls[0], done_calls[0])
+        assert work_calls[0] <= done_calls[0] + workers
+      return x, x
+    def postfn(x):
+      with lock:
+        done_calls[0] += 1
+      time.sleep(0.01)
+    server = Server(port, workers=workers)
+    server.bind('fn', workfn, postfn)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    futures = [client.fn(i) for i in range(20)]
+    [future.result() for future in futures]
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
@@ -448,6 +420,62 @@ class TestServer:
 
     proxy_server.close()
     proxy_client.close()
+    server.close()
+    client.close()
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_sharray(self, Server):
+
+    def server(port):
+      server = Server(port)
+      def fn(data):
+        assert data.array.shape == (3, 2)
+        assert data.array.dtype == np.float32
+        return data
+      server.bind('fn', fn)
+      server.start(block=True)
+
+    def client(port):
+      data = zerofun.SharedArray((3, 2), np.float32)
+      data.array[:] = np.arange(6, dtype=np.float32).reshape(3, 2)
+      client = zerofun.Client('localhost', port)
+      result = client.call('fn', data).result()
+      assert result.name == data.name
+      assert result, data
+      client.close()
+      data.close()
+
+    port = zerofun.free_port()
+    client = zerofun.Process(client, port, start=True)
+    server = zerofun.Process(server, port, start=True)
+    client.join()
+    server.kill()
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_client_drops(self, Server):
+    barrier = threading.Barrier(2)
+
+    def fn(x):
+      if x == 1:
+        barrier.wait()
+        time.sleep(0.5)
+      return x
+
+    port = zerofun.free_port()
+    server = Server(port)
+    server.bind('fn', fn)
+    server.start(block=False)
+
+    client = zerofun.Client('localhost', port)
+    client.fn(1)
+    barrier.wait()
+    client.close()
+    stats = server.stats()
+    assert stats['numrecv'] == 1
+    assert stats['numsend'] == 0
+
+    client = zerofun.Client('localhost', port)
+    assert client.fn(2).result() == 2
     server.close()
     client.close()
 

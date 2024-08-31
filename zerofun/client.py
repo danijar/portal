@@ -43,8 +43,8 @@ class Client:
     now = time.time()
     stats = {
         'inflight': self._numinflight(),
-        'numrecv': self.sendrate[0],
-        'numsend': self.recvrate[0],
+        'numsend': self.sendrate[0],
+        'numrecv': self.recvrate[0],
         'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
         'recvrate': self.recvrate[0] / (now - self.recvrate[1]),
         'waitmean': self.waitmean[0] and (self.waitmean[1] / self.waitmean[0]),
