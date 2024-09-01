@@ -153,14 +153,14 @@ class ClientSocket:
     sel.close()
 
   def _connect(self):
-    sock, addr = self._create()
-    self._log(f'Connecting to {addr[0]}:{addr[1]}')
-    # We need to resolve the address regularly.
-    sock.settimeout(10)
+    self._log(f'Connecting to {self.host}:{self.port}')
     once = True
     while self.running:
+      sock, addr = self._create()
       try:
         addr = contextlib.context().resolver(addr)
+        # We need to resolve the address regularly.
+        sock.settimeout(10)
         sock.connect(addr)
         sock.settimeout(0)
         self._log('Connection established')
@@ -172,6 +172,7 @@ class ClientSocket:
       if once:
         self._log('Still trying to connect...')
         once = False
+      sock.close()
     return None
 
   def _create(self):
@@ -181,6 +182,7 @@ class ClientSocket:
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       addr = (self.host, self.port)
+    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # TODO
     after = self.options.keepalive_after
     every = self.options.keepalive_every
     fails = self.options.keepalive_fails
