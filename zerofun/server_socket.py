@@ -9,6 +9,10 @@ from . import buffers
 from . import thread
 from . import utils
 
+# TODO: It's fine to discard partial messages if the connection is lost.
+# If the other side just received the full message and then died immediately
+# after, it would be no different.
+
 
 class Connection:
 
@@ -85,7 +89,7 @@ class ServerSocket:
 
   def _loop(self):
     while self.running or self.sending:
-      writeable = set()
+      writeable = set()  # TODO
       for key, mask in self.sel.select(timeout=0.2):
         if key.data is None:
           assert mask & selectors.EVENT_READ
@@ -99,6 +103,8 @@ class ServerSocket:
         addr, sendbuf = self.sending.popleft()
         conn = self.conns.get(addr, None)
         if not conn:
+          # TODO: If addr is not unique between reconnects, we should
+          # clear all outgoing messages for the connection object.
           self._log('Dropping messages to disconnected client')
           continue
         if addr not in writeable:
@@ -115,7 +121,7 @@ class ServerSocket:
           self._disconnect(conn)
         except BlockingIOError:
           remaining.append((addr, sendbuf))
-      self.sending.extendleft(reversed(remaining))
+      self.sending.extendleft(reversed(remaining))  # TODO
 
   def _accept(self, sock):
     sock, addr = sock.accept()

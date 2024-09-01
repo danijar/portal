@@ -5,7 +5,6 @@ import selectors
 import socket
 import sys
 import threading
-import time
 
 from . import buffers
 from . import contextlib
@@ -42,13 +41,11 @@ class ClientSocket:
     self.port = port
     self.name = name
     self.options = Options(**kwargs)
-    self.sel = selectors.DefaultSelector()
-    self.sock, self.addr = self._create()
     self.isconnected = threading.Event()
+    self.shouldconn = threading.Event()
     self.sending = collections.deque()
     self.received = queue.Queue()
     self.running = True
-    self.lock = threading.Lock()
     self.thread = thread.Thread(self._loop, start=True)
     connect and self.connect()
 
@@ -57,92 +54,72 @@ class ClientSocket:
     return self.isconnected.is_set()
 
   def connect(self, timeout=None):
-    with self.lock:
-      assert timeout is None or 0 < timeout, 'connect requires timeout'
-      self._log(f'Connecting to {self.addr[0]}:{self.addr[1]}')
-      start = time.time()
-      self.sock.settimeout(min(max(0.01, timeout), 10) if timeout else 10)
-      once = True
-      while True:
-        try:
-          addr = contextlib.context().resolver(self.addr)
-          self.sock.connect(addr)
-          self.sock.settimeout(0)
-          self.isconnected.set()
-          self._log('Connection established')
-          return True
-        except ConnectionError:
-          pass
-        except TimeoutError:
-          pass
-        if timeout and time.time() - start >= timeout:
-          return False
-        if once:
-          self._log('Still trying to connect...')
-          once = False
+    self.shouldconn.set()
+    return self.isconnected.wait(timeout)
 
-  def send(self, *data):
-    with self.lock:
-      assert self.running
-      self._require_connection()
-      if len(self.sending) > self.options.max_send_queue:
-        raise RuntimeError('Too many outgoing messages enqueued')
-      maxsize = self.options.max_msg_size
-      self.sending.append(buffers.SendBuffer(*data, maxsize=maxsize))
+  def send(self, *data, timeout=None):
+    assert self.running
+    self._require_connection(timeout)
+    if len(self.sending) > self.options.max_send_queue:
+      raise RuntimeError('Too many outgoing messages enqueued')
+    maxsize = self.options.max_msg_size
+    self.sending.append(buffers.SendBuffer(*data, maxsize=maxsize))
 
   def recv(self, timeout=None):
     assert self.running
-    with self.lock:
-      self._require_connection()
+    timeout = utils.Timeout(timeout)  # TODO: Inline and delete class.
     try:
-      if timeout == 0:
+      if timeout.over:
         return self.received.get(block=False)
-      if timeout and timeout <= 0.2:
-        return self.received.get(block=True, timeout=timeout)
-      start = time.time()
       while True:
         try:
-          x = self.received.get(block=True, timeout=0.2)
-          return x
+          return self.received.get(timeout=min(timeout.number, 0.2))
         except queue.Empty:
-          with self.lock:
-            self._require_connection()
-          if timeout and time.time() - start >= timeout:
+          self._require_connection(timeout.left)
+          if timeout.over:
             raise
     except queue.Empty:
       raise TimeoutError
 
   def close(self, timeout=None):
-    with self.lock:
-      self.running = False
-      self.thread.join(timeout)
-      self.thread.kill()
-      self.sock.close()
-      self.sel.close()
+    self.running = False
+    self.thread.join(timeout)
+    self.thread.kill()
 
-  def _require_connection(self):
-    if self.isconnected.is_set():
+  def _require_connection(self, timeout):
+    if self.connected:
       return
-    self.sending.clear()
     if self.options.reconnect:
-      self.connect(timeout=None)
+      if timeout == 0 or not self.connect(timeout):
+        raise TimeoutError
     else:
       raise Disconnected
 
   def _loop(self):
+    sel = selectors.DefaultSelector()
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
+
     while self.running or (self.sending and self.isconnected.is_set()):
-      if not self.isconnected.wait(0.2):
-        continue
+
+      if not self.isconnected.is_set():
+        if not self.shouldconn.wait(timeout=0.2):
+          continue
+        sock = self._connect()
+        if not sock:
+          break
+        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
+        self.isconnected.set()
+        self.shouldconn.clear()
+
       try:
-        ready = tuple(self.sel.select(timeout=0.2))
+        ready = tuple(sel.select(timeout=0.2))
         if not ready:
           continue
         mask = ready[0][1]
         if mask & selectors.EVENT_READ:
-          size = recvbuf.recv(self.sock)
+          size = recvbuf.recv(sock)
           if not size:
-            raise OSError('Received zero bytes')
+            raise ConnectionResetError
           if recvbuf.done():
             if self.received.qsize() > self.options.max_recv_queue:
               raise RuntimeError('Too many incoming messages enqueued')
@@ -151,20 +128,51 @@ class ClientSocket:
         if mask & selectors.EVENT_WRITE and self.sending:
           first = self.sending[0]
           try:
-            first.send(self.sock)
+            first.send(sock)
             if first.done():
               self.sending.popleft()
           except (TimeoutError, BlockingIOError):
             pass
+
       except OSError as e:
         detail = f'{type(e).__name__}'
         detail = f'{detail}: {e}' if str(e) else detail
         self._log(f'Connection to server lost ({detail})')
         self.isconnected.clear()
-        self.sel.unregister(self.sock)
-        self.sock.close()
-        self.sock, self.addr = self._create()
+        sel.unregister(sock)
+        sock.close()
+        # Discard remaining messages because it's not clear whether they should
+        # be delivered to another server once a new connection is established.
+        # Discarding the queue is equivalent to the situation that all messages
+        # have been delivered and the receiving end terminated right after
+        # without being able to do anything with the received messages.
+        self.sending.clear()
         continue
+
+    sock.close()
+    sel.close()
+
+  def _connect(self):
+    sock, addr = self._create()
+    self._log(f'Connecting to {addr[0]}:{addr[1]}')
+    # We need to resolve the address regularly.
+    sock.settimeout(10)
+    once = True
+    while self.running:
+      try:
+        addr = contextlib.context().resolver(addr)
+        sock.connect(addr)
+        sock.settimeout(0)
+        self._log('Connection established')
+        return sock
+      except ConnectionError:
+        pass
+      except TimeoutError:
+        pass
+      if once:
+        self._log('Still trying to connect...')
+        once = False
+    return None
 
   def _create(self):
     if self.options.ipv6:
@@ -173,7 +181,6 @@ class ClientSocket:
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       addr = (self.host, self.port)
-
     after = self.options.keepalive_after
     every = self.options.keepalive_every
     fails = self.options.keepalive_fails
@@ -190,8 +197,6 @@ class ClientSocket:
       sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
     if sys.platform == 'win32':
       sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
-
-    self.sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, None)
     return sock, addr
 
   def _log(self, *args):

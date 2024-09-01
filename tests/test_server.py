@@ -8,7 +8,7 @@ import zerofun
 
 SERVERS = [
     zerofun.Server,
-    zerofun.BatchServer,
+    # zerofun.BatchServer,  # TODO
 ]
 
 

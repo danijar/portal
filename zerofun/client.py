@@ -63,19 +63,19 @@ class Client:
     with self.lock:
       self.waitmean[1] += time.time() - start
       self.waitmean[0] += 1
+      self.sendrate[0] += 1
     if self.errors:  # Raise errors of dropped futures.
       raise RuntimeError(self.errors.popleft())
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
     self.socket.send(reqnum, strlen, name, *packlib.pack(data))
-    with self.lock:
-      self.sendrate[0] += 1
     future = Future(self._wait)
+    # TODO: Set futures to error state when socket disconnects.
     self.futures[reqnum] = future
     return future
 
   def close(self, timeout=None):
-    return self.socket.close(timeout)
+    self.socket.close(timeout)
 
   def _numinflight(self):
     return len([x for x in self.futures.values() if not x.don])
@@ -139,7 +139,7 @@ class Future:
     return self.don
 
   def done(self):
-    return self.wait(timeout=0)
+    return self.don
 
   def result(self, timeout=None):
     if not self.wait(timeout):
