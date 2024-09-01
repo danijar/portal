@@ -106,32 +106,7 @@ def style(color=None, background=None, bold=None, underline=None, reset=None):
   return ''.join(parts)
 
 
-class Timeout:
-
-  def __init__(self, timeout):
-    assert timeout is None or 0 <= timeout
-    if timeout not in (None, 0):
-      self.start = time.time()
-    self.timeout = timeout
-
-  @property
-  def over(self):
-    return self.timeout == 0
-
-  @property
-  def left(self):
-    if self.timeout in (None, 0):
-      return self.timeout
-    self.timeout = max(0, self.timeout - (time.time() - self.start))
-    return self.timeout
-
-  @property
-  def number(self):
-    left = self.left
-    return float('inf') if left is None else left
-
-
-def acquire(lock, timeout):
+def acquire(lock, timeout):  # TODO: remove
   if timeout is None:
     return lock.acquire()
   elif timeout == 0:

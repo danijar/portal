@@ -5,6 +5,7 @@ import selectors
 import socket
 import sys
 import threading
+import time
 
 from . import buffers
 from . import contextlib
@@ -65,24 +66,26 @@ class ClientSocket:
 
   def send(self, *data, timeout=None):
     assert self.running
-    self._require_connection(timeout)
     if len(self.sendq) > self.options.max_send_queue:
       raise RuntimeError('Too many outgoing messages enqueued')
+    self._require_connection(timeout)
     maxsize = self.options.max_msg_size
     self.sendq.append(buffers.SendBuffer(*data, maxsize=maxsize))
 
   def recv(self, timeout=None):
     assert self.running
-    timeout = utils.Timeout(timeout)  # TODO: Inline and delete class.
+    timeout = float('inf') if timeout is None else timeout
     try:
-      if timeout.over:
-        return self.recvq.get(block=False)
+      if timeout <= 0.2:
+        return self.recvq.get(block=(timeout != 0), timeout=timeout)
+      start = time.time()
       while True:
         try:
-          return self.recvq.get(timeout=min(timeout.number, 0.2))
+          return self.recvq.get(timeout=min(timeout, 0.2))
         except queue.Empty:
-          self._require_connection(timeout.left)
-          if timeout.over:
+          timeout = max(0, timeout - (time.time() - start))
+          self._require_connection(timeout)
+          if timeout == 0:
             raise
     except queue.Empty:
       raise TimeoutError
@@ -95,15 +98,15 @@ class ClientSocket:
   def _require_connection(self, timeout):
     if self.connected:
       return
-    if self.options.reconnect:
-      if timeout == 0 or not self.connect(timeout):
-        raise TimeoutError
-    else:
+    if not self.options.reconnect:
       raise Disconnected
+    if timeout == 0 or not self.connect(timeout):
+      raise TimeoutError
 
   def _loop(self):
-    sel = selectors.DefaultSelector()
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
+    sel = selectors.DefaultSelector()
+    sock = None
 
     while self.running or (self.sendq and self.isconn.is_set()):
 
@@ -111,22 +114,19 @@ class ClientSocket:
         if not self.wantconn.wait(timeout=0.2):
           continue
         sock = self._connect()
+        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         if not sock:
           break
-        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         self.isconn.set()
         self.wantconn.clear()
         [x() for x in self.callbacks_conn]
 
       try:
-        ready = tuple(sel.select(timeout=0.2))
-        if not ready:
-          continue
-        mask = ready[0][1]
-        if mask & selectors.EVENT_READ:
-          size = recvbuf.recv(sock)
-          if not size:
-            raise ConnectionResetError
+
+        sel.select(timeout=0.2)
+
+        try:
+          recvbuf.recv(sock)
           if recvbuf.done():
             if self.recvq.qsize() > self.options.max_recv_queue:
               raise RuntimeError('Too many incoming messages enqueued')
@@ -134,13 +134,15 @@ class ClientSocket:
             self.recvq.put(msg)
             [x(msg) for x in self.callbacks_recv]
             recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-        if mask & selectors.EVENT_WRITE and self.sendq:
-          first = self.sendq[0]
+        except BlockingIOError:
+          pass
+
+        if self.sendq:
           try:
-            first.send(sock)
-            if first.done():
+            self.sendq[0].send(sock)
+            if self.sendq[0].done():
               self.sendq.popleft()
-          except (TimeoutError, BlockingIOError):
+          except BlockingIOError:
             pass
 
       except OSError as e:
@@ -159,7 +161,6 @@ class ClientSocket:
         continue
 
     sock.close()
-    sel.close()
 
   def _connect(self):
     host, port = self.addr

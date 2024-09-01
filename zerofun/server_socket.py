@@ -57,9 +57,11 @@ class ServerSocket:
     self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')
     self.conns = {}
     self.running = True
+
+    # TODO
     self.received = queue.Queue()  # [(addr, buffer)]
     self.sending = collections.deque()  # [(addr, SendBuffer)]
-    self.event = threading.Event()
+
     self.thread = thread.Thread(self._loop, start=True)
 
   @property
