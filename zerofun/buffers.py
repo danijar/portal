@@ -1,3 +1,4 @@
+import collections
 import os
 import weakref
 
@@ -18,26 +19,32 @@ class SendBuffer:
     assert not maxsize or length <= length, (length, maxsize)
     lenbuf = length.to_bytes(4, 'little', signed=False)
     self.buffers = [lenbuf, *buffers]
+    self.remaining = collections.deque(self.buffers)
     self.pos = 0
 
   def __repr__(self):
-    lengths = [len(x) for x in self.buffers]
-    return f'SendBuffer(pos={self.pos}, lengths={lengths})'
+    lens = [len(x) for x in self.buffers]
+    left = [len(x) for x in self.remaining]
+    return f'SendBuffer(pos={self.pos}, lengths={lens} remaining={left})'
+
+  def reset(self):
+    self.remaining = collections.deque(self.buffers)
+    self.pos = 0
 
   def send(self, sock):
-    first, *others = self.buffers
+    first, *others = self.remaining
     assert self.pos < len(first)
     size = os.writev(sock.fileno(), [memoryview(first)[self.pos:], *others])
     if size == 0:
       raise ConnectionResetError
     assert 0 <= size, size
     self.pos += max(0, size)
-    while self.buffers and self.pos >= len(self.buffers[0]):
-      self.pos -= len(self.buffers.pop(0))
+    while self.remaining and self.pos >= len(self.remaining[0]):
+      self.pos -= len(self.remaining.popleft())
     return size
 
   def done(self):
-    return not self.buffers
+    return not self.remaining
 
 
 class RecvBuffer:
