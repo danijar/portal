@@ -4,6 +4,8 @@ import time
 import pytest
 import zerofun
 
+# TODO: Leaked semaphore warnings.
+
 
 class TestErrfile:
 

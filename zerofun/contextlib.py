@@ -12,27 +12,6 @@ import psutil
 from . import utils
 
 
-CONTEXT = None
-
-def setup(errfile=None, check_interval=20, initfns=[]):
-  global CONTEXT
-  if CONTEXT:
-    CONTEXT.close()
-  CONTEXT = Context(errfile, check_interval)
-  [CONTEXT.initfn(x) for x in initfns]
-
-def context():
-  global CONTEXT
-  if not CONTEXT:
-    CONTEXT = Context(None)
-  return CONTEXT
-
-def close():
-  global CONTEXT
-  context().close()
-  CONTEXT = None
-
-
 class Context:
 
   def __init__(self, errfile=None, check_interval=20, resolver=None):
@@ -90,11 +69,11 @@ class Context:
     typ, tb = type(e), e.__traceback__
     summary = list(traceback.format_exception_only(typ, e))[0].strip('\n')
     long = ''.join(traceback.format_exception(typ, e, tb)).strip('\n')
-    message = f"\n---\nError in '{name}' ({summary}):\n{long}"
+    message = f"Error in '{name}' ({summary}):\n{long}"
     with self.printlock:
       style = utils.style(color='red')
       reset = utils.style(reset=True)
-      print(style + message + reset)
+      print(style + '\n---\n' + message + reset)
     if self.errfile:
       with self.errfile.open('wb') as f:
         f.write(message.encode('utf-8'))
@@ -126,3 +105,23 @@ class Context:
           self.shutdown(2)
     except (SystemExit, KeyboardInterrupt):
       pass
+
+
+CONTEXT = None
+
+def setup(errfile=None, check_interval=20, initfns=[]):
+  global CONTEXT
+  CONTEXT and CONTEXT.close()
+  CONTEXT = Context(errfile, check_interval)
+  [CONTEXT.initfn(x) for x in initfns]
+  return CONTEXT
+
+def context():
+  global CONTEXT
+  CONTEXT = CONTEXT or Context()
+  return CONTEXT
+
+def close():
+  global CONTEXT
+  CONTEXT.close()
+  CONTEXT = None
