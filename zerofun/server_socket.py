@@ -112,7 +112,7 @@ class ServerSocket:
           except BlockingIOError:
             pass
           except ConnectionResetError:
-            self._disconnect(conn)
+            self._disconnect(conn, recvrest=True)  # TODO: Needed?
     except Exception as e:
       self.error = e
 
@@ -131,7 +131,7 @@ class ServerSocket:
     try:
       conn.recvbuf.recv(conn.sock)
     except ConnectionResetError:
-      self._disconnect(conn)
+      self._disconnect(conn, recvrest=False)
       return
     if conn.recvbuf.done():
       if self.recvq.qsize() > self.options.max_recv_queue:
@@ -139,7 +139,13 @@ class ServerSocket:
       self.recvq.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
 
-  def _disconnect(self, conn):
+  def _disconnect(self, conn, recvrest):
+    if recvrest and False:  # TODO: Needed?
+      try:
+        while True:
+          self._recv(conn)
+      except OSError:
+        pass
     self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]}')
     conn = self.conns.pop(conn.addr)
     if conn.sendbufs:

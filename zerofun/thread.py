@@ -1,5 +1,6 @@
 import threading
 import time
+import traceback
 
 from . import contextlib
 from . import utils
@@ -77,7 +78,10 @@ class Thread:
       exitcode = self.fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
       self.excode = exitcode
-    except (SystemExit, KeyboardInterrupt):
+    except (SystemExit, KeyboardInterrupt) as e:
+      compact = traceback.format_tb(e.__traceback__)
+      compact = [line.split('\n', 1)[0] for line in compact]
+      print(f"Killed thread '{self.name}' at:\n{'\n'.join(compact)}")
       [x.kill(0.1) for x in context.get_children(self.ident)]
       self.excode = 2
     except Exception as e:

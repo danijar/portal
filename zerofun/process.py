@@ -1,4 +1,5 @@
 import atexit
+import traceback
 
 import cloudpickle
 import psutil
@@ -97,7 +98,10 @@ class Process:
       fn = cloudpickle.loads(fn)
       exitcode = fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
-    except (SystemExit, KeyboardInterrupt):
+    except (SystemExit, KeyboardInterrupt) as e:
+      compact = traceback.format_tb(e.__traceback__)
+      compact = [line.split('\n', 1)[0] for line in compact]
+      print(f"Killed process '{name}' at:\n{'\n'.join(compact)}")
       exitcode = 2
     except Exception as e:
       contextlib.context().error(e, name)

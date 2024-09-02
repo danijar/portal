@@ -78,6 +78,14 @@ Several productivity and performance features are available:
   `Server` but uses a background process to batch requests and fan out results,
   substantially reducing GIL load for the server workers in the main process.
 
+## FAQ
+
+### Popup on MacOS
+
+If you see a popup *"Do you want the application "Python.app" to accept
+incoming network connections?"* you need to [code sign your Python
+binary](https://stackoverflow.com/a/61462541).
+
 ## Questions
 
 Please open a [GitHub issue](https://github.com/danijar/zerofun/issues) for

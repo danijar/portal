@@ -1,3 +1,4 @@
+import sys
 import time
 
 import pytest
@@ -91,15 +92,16 @@ class TestSocket:
     server.close()
     client.close()
 
+  @pytest.mark.skipif(sys.platform == 'darwin', reason='firewall popups')
   @pytest.mark.parametrize('repeat', range(3))
   def test_server_dies(self, repeat):
     port = zerofun.free_port()
     q = zerofun.context().mp.Queue()
 
     def server_fn(port, q):
+      # Receive exactly one message and then exit wihout close().
       server = zerofun.ServerSocket(port)
-      q.put(bytes(server.recv()[1]))  # Receive one message.
-      return  # Exit without server.close().
+      q.put(bytes(server.recv()[1]))
 
     def client_fn(port, q):
       client = zerofun.ClientSocket(
@@ -120,8 +122,8 @@ class TestSocket:
 
     server = zerofun.Process(server_fn, port, q, start=True)
     client = zerofun.Process(client_fn, port, q, start=True)
-    server.join()
     assert q.get() == b'method'
+    server.join()
     assert q.get() == b'bye'
     server = zerofun.Process(server_fn, port, q, start=True)
     server.join()
@@ -129,7 +131,7 @@ class TestSocket:
     assert q.get() == b'hi'
 
   @pytest.mark.parametrize('repeat', range(3))
-  def test_twoway(self, repeat, size=1024 ** 2, prefetch=16):
+  def test_twoway(self, repeat, size=1024 ** 2, prefetch=8):
 
     def server(port):
       server = zerofun.ServerSocket(port)
@@ -137,6 +139,7 @@ class TestSocket:
       while True:
         addr, data = server.recv()
         if data == b'exit':
+          server.send(addr, b'exit')
           break
         server.send(addr, data)
         assert len(data) == size
@@ -153,6 +156,8 @@ class TestSocket:
         result = client.recv()
         assert len(result) == size
       client.send(b'exit')
+      while client.recv() != b'exit':
+        pass
       client.close()
 
     port = zerofun.free_port()
