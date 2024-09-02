@@ -90,7 +90,7 @@ class Context:
     typ, tb = type(e), e.__traceback__
     summary = list(traceback.format_exception_only(typ, e))[0].strip('\n')
     long = ''.join(traceback.format_exception(typ, e, tb)).strip('\n')
-    message = f"Error in '{name}' ({summary}):\n{long}"
+    message = f"\n---\nError in '{name}' ({summary}):\n{long}"
     with self.printlock:
       style = utils.style(color='red')
       reset = utils.style(reset=True)

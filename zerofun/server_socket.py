@@ -54,13 +54,16 @@ class ServerSocket:
     self.conns = {}
     self.recvq = queue.Queue()  # [(addr, bytes)]
     self.running = True
-    self.thread = thread.Thread(self._loop, start=True)
+    self.error = None
+    self.thread = thread.Thread(self._loop, name=f'{name}Loop', start=True)
 
   @property
   def connections(self):
     return tuple(self.conns.keys())
 
   def recv(self, timeout=None):
+    if self.error:
+      raise self.error
     assert self.running
     try:
       return self.recvq.get(block=(timeout != 0), timeout=timeout)
@@ -68,6 +71,8 @@ class ServerSocket:
       raise TimeoutError
 
   def send(self, addr, *data):
+    if self.error:
+      raise self.error
     assert self.running
     if self._numsending() > self.options.max_send_queue:
       raise RuntimeError('Too many outgoing messages enqueued')
@@ -86,27 +91,30 @@ class ServerSocket:
     self.sel.close()
 
   def _loop(self):
-    while self.running or self._numsending():
-      writeable = []
-      for key, mask in self.sel.select(timeout=0.2):
-        if key.data is None:
-          assert mask & selectors.EVENT_READ
-          self._accept(key.fileobj)
-        elif mask & selectors.EVENT_READ:
-          self._recv(key.data)
-        elif mask & selectors.EVENT_WRITE:
-          writeable.append(key.data)
-      for conn in writeable:
-        if not conn.sendbufs:
-          continue
-        try:
-          conn.sendbufs[0].send(conn.sock)
-          if conn.sendbufs[0].done():
-            conn.sendbufs.popleft()
-        except BlockingIOError:
-          pass
-        except ConnectionResetError:
-          self._disconnect(conn)
+    try:
+      while self.running or self._numsending():
+        writeable = []
+        for key, mask in self.sel.select(timeout=0.2):
+          if key.data is None:
+            assert mask & selectors.EVENT_READ
+            self._accept(key.fileobj)
+          elif mask & selectors.EVENT_READ:
+            self._recv(key.data)
+          elif mask & selectors.EVENT_WRITE:
+            writeable.append(key.data)
+        for conn in writeable:
+          if not conn.sendbufs:
+            continue
+          try:
+            conn.sendbufs[0].send(conn.sock)
+            if conn.sendbufs[0].done():
+              conn.sendbufs.popleft()
+          except BlockingIOError:
+            pass
+          except ConnectionResetError:
+            self._disconnect(conn)
+    except Exception as e:
+      self.error = e
 
   def _accept(self, sock):
     sock, addr = sock.accept()

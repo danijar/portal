@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 
@@ -8,7 +9,7 @@ import zerofun
 
 SERVERS = [
     zerofun.Server,
-    # zerofun.BatchServer,  # TODO
+    zerofun.BatchServer,
 ]
 
 
@@ -49,12 +50,13 @@ class TestServer:
     port = zerofun.free_port()
     server = Server(port)
     server.bind('fn', lambda data: data)
-    with server:
-      clients = [zerofun.Client('localhost', port) for _ in range(10)]
-      futures = [client.fn(i) for i, client in enumerate(clients)]
-      results = [future.result() for future in futures]
-      assert results == list(range(10))
+    server.start(block=False)
+    clients = [zerofun.Client('localhost', port) for _ in range(10)]
+    futures = [client.fn(i) for i, client in enumerate(clients)]
+    results = [future.result() for future in futures]
+    assert results == list(range(10))
     [x.close() for x in clients]
+    server.close()
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_multiple_methods(self, Server):
@@ -80,7 +82,11 @@ class TestServer:
       server.bind('fn', fn)
       server.start(block=True)
 
+    # For the BatchServer, there are resource leak warnings on crash.
+    os.environ['PYTHONWARNINGS'] = 'ignore'
     server = zerofun.Process(server, port, start=True)
+    del os.environ['PYTHONWARNINGS']
+
     client = zerofun.Client('localhost', port)
     assert client.fn(1).result() == 1
     assert server.running
@@ -171,11 +177,10 @@ class TestServer:
     client.close()
 
   @pytest.mark.parametrize('repeat', range(3))
-  # @pytest.mark.parametrize('Server', SERVERS)  # TODO
-  @pytest.mark.parametrize('Server', [zerofun.Server])
+  @pytest.mark.parametrize('Server', SERVERS)
   def test_separate_pools(self, repeat, Server):
     def slow(x):
-      time.sleep(0.5)
+      time.sleep(0.1)
       return x
     def fast(x):
       return x
@@ -222,15 +227,18 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_sharray(self, Server):
+    done = zerofun.context().mp.Event()
 
-    def server(port):
+    def server(port, done):
       server = Server(port)
       def fn(data):
         assert data.array.shape == (3, 2)
         assert data.array.dtype == np.float32
         return data
       server.bind('fn', fn)
-      server.start(block=True)
+      server.start(block=False)
+      done.wait()
+      server.close()
 
     def client(port):
       data = zerofun.SharedArray((3, 2), np.float32)
@@ -244,9 +252,10 @@ class TestServer:
 
     port = zerofun.free_port()
     client = zerofun.Process(client, port, start=True)
-    server = zerofun.Process(server, port, start=True)
+    server = zerofun.Process(server, port, done, start=True)
     client.join()
-    server.kill()
+    done.set()
+    server.join()
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
@@ -275,4 +284,3 @@ class TestServer:
     client = zerofun.Client('localhost', port)
     assert client.fn(2).result() == 2
     client.close()
-    server.close()

@@ -12,15 +12,15 @@ from . import thread
 class Server:
 
   def __init__(self, port, name='Server', workers=1, errors=True, **kwargs):
-    self.socket = server_socket.ServerSocket(port, name, **kwargs)
-    self.loop = thread.Thread(self._loop)
+    self.socket = server_socket.ServerSocket(port, f'{name}Socket', **kwargs)
+    self.loop = thread.Thread(self._loop, name=f'{name}Loop')
     self.methods = {}
     self.jobs = set()
     self.workers = workers
     self.errors = errors
     self.running = False
-    self.pool = poollib.ThreadPool(workers, 'pool_default')
-    self.postfn_pool = poollib.ThreadPool(1, 'pool_postfn')
+    self.pool = poollib.ThreadPool(workers, 'default_pool')
+    self.postfn_pool = poollib.ThreadPool(1, 'postfn')
     self.postfn_inp = collections.deque()
     self.postfn_out = collections.deque()
     self.metrics = dict(send=0, recv=0, time=time.time())
@@ -30,7 +30,7 @@ class Server:
     assert not self.running
     assert name not in self.methods, name
     if workers:
-      pool = poollib.ThreadPool(workers, f'pool_{name}')
+      pool = poollib.ThreadPool(workers, '{name}_pool')
       self.pools.append(pool)
     else:
       pool = self.pool

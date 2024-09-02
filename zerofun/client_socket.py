@@ -53,7 +53,7 @@ class ClientSocket:
     self.recvq = queue.Queue()
 
     self.running = True
-    self.thread = thread.Thread(self._loop, start=True)
+    self.thread = thread.Thread(self._loop, name=f'{name}Loop', start=True)
     connect and self.connect()
 
   @property

@@ -15,7 +15,7 @@ class Client:
       self, host, port, name='Client', maxinflight=16, connect=True, **kwargs):
     assert 1 <= maxinflight, maxinflight
     self.socket = client_socket.ClientSocket(
-        host, port, name, connect=False, **kwargs)
+        host, port, f'{name}Socket', connect=False, **kwargs)
     self.socket.callbacks_recv.append(self._recv)
     self.socket.callbacks_disc.append(self._disc)
     connect and self.socket.connect()
