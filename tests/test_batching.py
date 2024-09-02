@@ -12,24 +12,24 @@ BATCH_SERVERS = [
 ]
 
 
-# class TestBatching:
-#
-#   @pytest.mark.parametrize('BatchServer', BATCH_SERVERS)
-#   def test_single_client(self, BatchServer):
-#     port = zerofun.free_port()
-#     server = zerofun.BatchServer(port)
-#     def fn(x):
-#       assert x.shape == (4,)
-#       return 2 * x
-#     server.bind('fn', fn, batch=4)
-#     server.start(block=False)
-#     client = zerofun.Client('localhost', port)
-#     futures = [client.fn(x) for x in range(8)]
-#     results = [x.result() for x in futures]
-#     assert (results == 2 * np.arange(8)).all()
-#     client.close()
-#     server.close()
-#
+class TestBatching:
+
+  @pytest.mark.parametrize('BatchServer', BATCH_SERVERS)
+  def test_single_client(self, BatchServer):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port)
+    def fn(x):
+      assert x.shape == (4,)
+      return 2 * x
+    server.bind('fn', fn, batch=4)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    futures = [client.fn(x) for x in range(8)]
+    results = [x.result() for x in futures]
+    assert (results == 2 * np.arange(8)).all()
+    client.close()
+    server.close()
+
 #   def test_multiple_clients(self):
 #     port = zerofun.free_port()
 #     server = zerofun.BatchServer(port)

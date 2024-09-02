@@ -14,25 +14,18 @@ class Client:
   def __init__(
       self, host, port, name='Client', maxinflight=16, connect=True, **kwargs):
     assert 1 <= maxinflight, maxinflight
-
     self.socket = client_socket.ClientSocket(
         host, port, name, connect=False, **kwargs)
-
     self.socket.callbacks_recv.append(self._recv)
     self.socket.callbacks_disc.append(self._disc)
-    # self.socket.callbacks_conn.append()
-
     connect and self.socket.connect()
-
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
     self.errors = collections.deque()
-
     self.sendrate = [0, time.time()]
     self.recvrate = [0, time.time()]
     self.waitmean = [0, 0]
-
     self.cond = threading.Condition()
     self.lock = threading.Lock()
 
@@ -72,15 +65,12 @@ class Client:
     if self._numinflight() >= self.maxinflight:
       with self.cond:
         self.cond.wait_for(lambda: self._numinflight() < self.maxinflight)
-
     with self.lock:
       self.waitmean[1] += time.time() - start
       self.waitmean[0] += 1
       self.sendrate[0] += 1
-
     if self.errors:  # Raise errors of dropped futures.
-      raise RuntimeError(self.errors.popleft())
-
+      raise self.errors.popleft()
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
     self.socket.send(reqnum, strlen, name, *packlib.pack(data))
@@ -107,23 +97,22 @@ class Client:
       future.set_result(data)
     else:
       message = bytes(data[16:]).decode('utf-8')
-      self._seterr(future, message)
+      self._seterr(future, RuntimeError(message))
     with self.cond:
       self.cond.notify_all()
     self.socket.recv()
 
   def _disc(self):
-    # TODO: Add a test for this.
     for future in self.futures.values():
       if not future.done():
-        self._seterr(future, 'Connection lost')
+        self._seterr(future, client_socket.Disconnected)
 
-  def _seterr(self, future, message):
+  def _seterr(self, future, e):
     raised = [False]
     future.raised = raised
-    future.set_error(message)
+    future.set_error(e)
     weakref.finalize(future, lambda: (
-        None if raised[0] else self.errors.append(message)))
+        None if raised[0] else self.errors.append(e)))
 
 
 class Future:
@@ -133,7 +122,7 @@ class Future:
     self.con = threading.Condition()
     self.don = False
     self.res = None
-    self.msg = None
+    self.err = None
 
   def wait(self, timeout=None):
     if self.don:
@@ -148,10 +137,10 @@ class Future:
     if not self.wait(timeout):
       raise TimeoutError
     assert self.don
-    if self.msg is None:
+    if self.err is None:
       return self.res
     if not self.raised[0]:
-      raise RuntimeError(self.msg)
+      raise self.err
 
   def set_result(self, result):
     assert not self.don
@@ -160,9 +149,9 @@ class Future:
     with self.con:
       self.con.notify_all()
 
-  def set_error(self, message):
+  def set_error(self, e):
     assert not self.don
     self.don = True
-    self.msg = message
+    self.err = e
     with self.con:
       self.con.notify_all()

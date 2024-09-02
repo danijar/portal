@@ -3,15 +3,10 @@ import dataclasses
 import queue
 import selectors
 import socket
-import threading
 
 from . import buffers
 from . import thread
 from . import utils
-
-# TODO: It's fine to discard partial messages if the connection is lost.
-# If the other side just received the full message and then died immediately
-# after, it would be no different.
 
 
 class Connection:
@@ -20,6 +15,7 @@ class Connection:
     self.sock = sock
     self.addr = addr
     self.recvbuf = None
+    self.sendbufs = collections.deque()
 
   def fileno(self):
     return self.sock.fileno()
@@ -56,12 +52,8 @@ class ServerSocket:
     self.sel.register(self.sock, selectors.EVENT_READ, data=None)
     self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')
     self.conns = {}
+    self.recvq = queue.Queue()  # [(addr, bytes)]
     self.running = True
-
-    # TODO
-    self.received = queue.Queue()  # [(addr, buffer)]
-    self.sending = collections.deque()  # [(addr, SendBuffer)]
-
     self.thread = thread.Thread(self._loop, start=True)
 
   @property
@@ -71,16 +63,20 @@ class ServerSocket:
   def recv(self, timeout=None):
     assert self.running
     try:
-      return self.received.get(block=(timeout != 0), timeout=timeout)
+      return self.recvq.get(block=(timeout != 0), timeout=timeout)
     except queue.Empty:
       raise TimeoutError
 
   def send(self, addr, *data):
     assert self.running
-    if len(self.sending) > self.options.max_send_queue:
+    if self._numsending() > self.options.max_send_queue:
       raise RuntimeError('Too many outgoing messages enqueued')
     maxsize = self.options.max_msg_size
-    self.sending.append((addr, buffers.SendBuffer(*data, maxsize=maxsize)))
+    try:
+      self.conns[addr].sendbufs.append(
+          buffers.SendBuffer(*data, maxsize=maxsize))
+    except KeyError:
+      self._log('Dropping message to disconnected client')
 
   def close(self, timeout=None):
     self.running = False
@@ -90,8 +86,8 @@ class ServerSocket:
     self.sel.close()
 
   def _loop(self):
-    while self.running or self.sending:
-      writeable = set()  # TODO
+    while self.running or self._numsending():
+      writeable = []
       for key, mask in self.sel.select(timeout=0.2):
         if key.data is None:
           assert mask & selectors.EVENT_READ
@@ -99,38 +95,26 @@ class ServerSocket:
         elif mask & selectors.EVENT_READ:
           self._recv(key.data)
         elif mask & selectors.EVENT_WRITE:
-          writeable.add(key.data.addr)
-      remaining = []
-      for _ in range(len(self.sending)):
-        addr, sendbuf = self.sending.popleft()
-        conn = self.conns.get(addr, None)
-        if not conn:
-          # TODO: If addr is not unique between reconnects, we should
-          # clear all outgoing messages for the connection object.
-          self._log('Dropping messages to disconnected client')
+          writeable.append(key.data)
+      for conn in writeable:
+        if not conn.sendbufs:
           continue
-        if addr not in writeable:
-          remaining.append((addr, sendbuf))
-          continue
-        # Prevent later buffers from being written before the first buffer for
-        # each address is fully written. This would cause mingled data.
-        writeable.remove(addr)
         try:
-          sendbuf.send(conn.sock)
-          if not sendbuf.done():
-            remaining.append((addr, sendbuf))
+          conn.sendbufs[0].send(conn.sock)
+          if conn.sendbufs[0].done():
+            conn.sendbufs.popleft()
+        except BlockingIOError:
+          pass
         except ConnectionResetError:
           self._disconnect(conn)
-        except BlockingIOError:
-          remaining.append((addr, sendbuf))
-      self.sending.extendleft(reversed(remaining))  # TODO
 
   def _accept(self, sock):
     sock, addr = sock.accept()
     self._log(f'Accepted connection from {addr[0]}:{addr[1]}')
     sock.setblocking(False)
     conn = Connection(sock, addr)
-    self.sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, conn)
+    self.sel.register(
+        sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=conn)
     self.conns[addr] = conn
 
   def _recv(self, conn):
@@ -142,16 +126,23 @@ class ServerSocket:
       self._disconnect(conn)
       return
     if conn.recvbuf.done():
-      if self.received.qsize() > self.options.max_recv_queue:
+      if self.recvq.qsize() > self.options.max_recv_queue:
         raise RuntimeError('Too many incoming messages enqueued')
-      self.received.put((conn.addr, conn.recvbuf.result()))
+      self.recvq.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
 
   def _disconnect(self, conn):
     self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]}')
+    conn = self.conns.pop(conn.addr)
+    if conn.sendbufs:
+      count = len(conn.sendbufs)
+      conn.sendbufs.clear()
+      self._log(f'Dropping {count} messages to disconnected client')
     self.sel.unregister(conn.sock)
-    del self.conns[conn.addr]
     conn.sock.close()
+
+  def _numsending(self):
+    return sum(len(x.sendbufs) for x in self.conns.values())
 
   def _log(self, *args, **kwargs):
     if self.options.logging:

@@ -74,16 +74,15 @@ class ClientSocket:
 
   def recv(self, timeout=None):
     assert self.running
-    timeout = float('inf') if timeout is None else timeout
     try:
-      if timeout <= 0.2:
+      if timeout is not None and timeout <= 0.2:
         return self.recvq.get(block=(timeout != 0), timeout=timeout)
       start = time.time()
       while True:
         try:
-          return self.recvq.get(timeout=min(timeout, 0.2))
+          return self.recvq.get(timeout=min(timeout, 0.2) if timeout else 0.2)
         except queue.Empty:
-          timeout = max(0, timeout - (time.time() - start))
+          timeout = timeout and max(0, timeout - (time.time() - start))
           self._require_connection(timeout)
           if timeout == 0:
             raise

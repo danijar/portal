@@ -27,7 +27,7 @@ def run(workers, duration=None):
       code = errored[0].exitcode
       print(f"Shutting down workers due to crash in '{name}' ({code}).")
       [x.kill() for x in workers]
-      raise RuntimeError
+      raise RuntimeError(f"'{name}' crashed with exit code {code}")
 
 
 def kill_threads(threads, timeout=3):

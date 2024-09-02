@@ -170,7 +170,7 @@ class TestSocket:
      assert data == b'foo'
      large_result = bytes(1024 ** 2)
      server.send(addr, large_result)
-     server.close(timeout=None)  # Block until remaining messages are sent
+     server.close()
 
    def client(port):
      client = zerofun.ClientSocket('localhost', port)
@@ -183,9 +183,3 @@ class TestSocket:
        zerofun.Process(server, port),
        zerofun.Process(client, port),
    ])
-
-  # TODO:
-  # - test keep-alive
-  # - queue limits
-  # - test resolve
-  # - test timeouts

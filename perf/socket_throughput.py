@@ -42,7 +42,7 @@ def main():
       avgdur = sum(durations) / len(durations)
       mbps = size / avgdur / (1024 ** 2)
       mbps *= 2 if twoway else 1
-      print(mbps)  # 4500 oneway, 2700 twoway
+      print(mbps)  # 4000 oneway, 2700 twoway
 
   port = zerofun.free_port()
   zerofun.run([

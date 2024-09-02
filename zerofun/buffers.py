@@ -34,7 +34,10 @@ class SendBuffer:
   def send(self, sock):
     first, *others = self.remaining
     assert self.pos < len(first)
+    # The writev() call blocks but seems to be slightly faster than sendmsg().
     size = os.writev(sock.fileno(), [memoryview(first)[self.pos:], *others])
+    # size = sock.sendmsg(
+    #     [memoryview(first)[self.pos:], *others], (), socket.MSG_DONTWAIT)
     if size == 0:
       raise ConnectionResetError
     assert 0 <= size, size
