@@ -87,7 +87,6 @@ class Server:
         if not self.running:  # Do not accept further requests.
           break
         try:
-          # TODO: Tune the timeout.
           addr, data = self.socket.recv(timeout=0.0001)
         except TimeoutError:
           break
@@ -116,10 +115,6 @@ class Server:
         if postfn:
           self.postfn_inp.append(job)
         break  # We do not actually want to loop.
-      # We have to store job promises in an unordered set for this function,
-      # but this also means that if two jobs complete within the same server
-      # loop iteration, they will be retuned to the client in arbitrary order.
-      # TODO: Tune the timeout.
       completed, self.jobs = concurrent.futures.wait(
           self.jobs, 0.0001, concurrent.futures.FIRST_COMPLETED)
       for job in completed:

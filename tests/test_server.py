@@ -257,33 +257,31 @@ class TestServer:
     done.set()
     server.join()
 
-  # @pytest.mark.parametrize('repeat', range(3))  # TODO: 1000
-  # @pytest.mark.parametrize('Server', SERVERS)
-  # def test_client_drops(self, repeat, Server):
-  #   # TODO: This also prints server messages to terminal after the test is
-  #   over.
+  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_client_drops(self, repeat, Server):
+    barrier = threading.Barrier(2)
 
-  #   barrier = threading.Barrier(2)
+    def fn(x):
+      if x == 1:
+        barrier.wait()
+        time.sleep(0.5)
+      return x
 
-  #   def fn(x):
-  #     if x == 1:
-  #       barrier.wait()
-  #       time.sleep(0.5)
-  #     return x
+    port = zerofun.free_port()
+    server = Server(port)
+    server.bind('fn', fn)
+    server.start(block=False)
 
-  #   port = zerofun.free_port()
-  #   server = Server(port)
-  #   server.bind('fn', fn)
-  #   server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    client.fn(1)
+    barrier.wait()
+    client.close()
+    stats = server.stats()
+    assert stats['numrecv'] == 1
+    assert stats['numsend'] == 0
 
-  #   client = zerofun.Client('localhost', port)
-  #   client.fn(1)
-  #   barrier.wait()
-  #   client.close()
-  #   stats = server.stats()
-  #   assert stats['numrecv'] == 1
-  #   assert stats['numsend'] == 0
-
-  #   client = zerofun.Client('localhost', port)
-  #   assert client.fn(2).result() == 2  # TODO: raises Disconnected under BatchServer
-  #   client.close()
+    client = zerofun.Client('localhost', port)
+    assert client.fn(2).result() == 2
+    client.close()
+    server.close()

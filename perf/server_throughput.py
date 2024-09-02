@@ -8,11 +8,11 @@ def main():
 
   size = 1024 ** 3 // 4
   prefetch = 8
-  twoway = False
+  twoway = True  # False
 
   def server(port):
-    server = zerofun.Server(port)
-    # server = zerofun.BatchServer(port)
+    # server = zerofun.Server(port)
+    server = zerofun.BatchServer(port)
     # server = zerofun.BatchServer(port, process=False)
     # server = zerofun.BatchServer(port, shmem=True)
     def fn(x):
@@ -28,7 +28,7 @@ def main():
     for _ in range(prefetch):
       futures.append(client.call('foo', data))
     durations = collections.deque(maxlen=50)
-    start = time.time()
+    start = time.perf_counter()
     while True:
       futures.append(client.call('foo', data))
       result = futures.popleft().result()
@@ -36,7 +36,7 @@ def main():
         assert len(result) == size
       else:
         assert result == b'ok'
-      end = time.time()
+      end = time.perf_counter()
       durations.append(end - start)
       start = end
       avgdur = sum(durations) / len(durations)

@@ -73,7 +73,7 @@ def batcher(
     kwargs):
 
   outer = server_socket.ServerSocket(outer_port, name, **kwargs)
-  inner = client.Client('localhost', inner_port, name, **kwargs, maxinflight=9999999)  # TODO
+  inner = client.Client('localhost', inner_port, name, **kwargs)
   batches = {}  # {method: ([addr], [reqnum], structure, [array])}
   jobs = []
 
@@ -92,12 +92,13 @@ def batcher(
         if not running.is_set():  # Do not accept further requests.
           break
         try:
-          # TODO: Tune timeouts.
-          addr, data = outer.recv(timeout=0.0001)
+          addr, data = outer.recv(timeout=0.001)
         except TimeoutError:
           break
-        reqnum, data = bytes(data[:8]), data[8:]
-        strlen, data = int.from_bytes(data[:8], 'little', signed=False), data[8:]
+        reqnum = bytes(data[:8])
+        data = data[8:]
+        strlen = int.from_bytes(data[:8], 'little', signed=False)
+        data = data[8:]
         name, data = bytes(data[:strlen]).decode('utf-8'), data[strlen:]
         if name not in batsizes:
           send_error(addr, reqnum, 3, f'Unknown method {name}')
@@ -137,9 +138,9 @@ def batcher(
         for buffer, leaf in zip(buffers, leaves):
           buffer[index] = leaf
         if len(addrs) == batch_size:
-          # TODO: Keep track of the shared memory buffers until the inner server
-          # has responded and then close them. Later, we can also add them to a
-          # free list to reuse them.
+          # TODO: Keep track of the shared memory buffers until the inner
+          # server has responded and then close them. Later, we can also add
+          # them to a free list to reuse them.
           del batches[name]
           data = elements.tree.unflatten(buffers, reference)
           job = inner.call(name, *data)
