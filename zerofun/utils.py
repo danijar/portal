@@ -104,12 +104,3 @@ def style(color=None, background=None, bold=None, underline=None, reset=None):
   if background:
     parts.append(escseq('4' + str(colors[background])))
   return ''.join(parts)
-
-
-def acquire(lock, timeout):  # TODO: remove
-  if timeout is None:
-    return lock.acquire()
-  elif timeout == 0:
-    return lock.acquire(blocking=False)
-  else:
-    return lock.acquire(timeout=timeout)

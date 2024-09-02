@@ -14,15 +14,26 @@ class Client:
   def __init__(
       self, host, port, name='Client', maxinflight=16, connect=True, **kwargs):
     assert 1 <= maxinflight, maxinflight
+
     self.socket = client_socket.ClientSocket(
-        host, port, name, connect, **kwargs)
+        host, port, name, connect=False, **kwargs)
+
+    self.socket.callbacks_recv.append(self._recv)
+    self.socket.callbacks_disc.append(self._disc)
+    # self.socket.callbacks_conn.append()
+
+    connect and self.socket.connect()
+
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
     self.errors = collections.deque()
+
     self.sendrate = [0, time.time()]
     self.recvrate = [0, time.time()]
     self.waitmean = [0, 0]
+
+    self.cond = threading.Condition()
     self.lock = threading.Lock()
 
   @property
@@ -30,7 +41,7 @@ class Client:
     return self.socket.connected
 
   def __getattr__(self, name):
-    if name.startswith('__'):
+    if name.startswith('_'):
       raise AttributeError(name)
     try:
       return functools.partial(self.call, name)
@@ -59,18 +70,21 @@ class Client:
     reqnum = next(self.reqnum).to_bytes(8, 'little', signed=False)
     start = time.time()
     if self._numinflight() >= self.maxinflight:
-      self._wait(lambda: self._numinflight() < self.maxinflight)
+      with self.cond:
+        self.cond.wait_for(lambda: self._numinflight() < self.maxinflight)
+
     with self.lock:
       self.waitmean[1] += time.time() - start
       self.waitmean[0] += 1
       self.sendrate[0] += 1
+
     if self.errors:  # Raise errors of dropped futures.
       raise RuntimeError(self.errors.popleft())
+
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
     self.socket.send(reqnum, strlen, name, *packlib.pack(data))
-    future = Future(self._wait)
-    # TODO: Set futures to error state when socket disconnects.
+    future = Future()
     self.futures[reqnum] = future
     return future
 
@@ -80,27 +94,7 @@ class Client:
   def _numinflight(self):
     return len([x for x in self.futures.values() if not x.don])
 
-  def _wait(self, until, timeout=None):
-    # TODO: This waiting function isn't ideal when there are multiple threads
-    # waiting at the same time. The problem is that other threads may render
-    # the until() condition true for us but we won't notice until 0.1 seconds
-    # later if there are no other incoming messages.
-    inner = 0.1 if timeout is None else min(timeout, 0.1)
-    if timeout not in (0, None):
-      start = time.time()
-    while not until():
-      try:
-        data = self.socket.recv(inner)
-        self._process(data)
-      except TimeoutError:
-        if timeout == 0:
-          raise
-        if timeout is None:
-          continue
-        if time.time() - start >= timeout:
-          raise
-
-  def _process(self, data):
+  def _recv(self, data):
     assert len(data) >= 16, 'Unexpectedly short response'
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
@@ -113,30 +107,39 @@ class Client:
       future.set_result(data)
     else:
       message = bytes(data[16:]).decode('utf-8')
-      raised = [False]
-      future.set_error(message)
-      future.raised = raised
-      weakref.finalize(future, lambda: (
-          None if raised[0] else self.errors.append(message)))
+      self._seterr(future, message)
+    with self.cond:
+      self.cond.notify_all()
+    self.socket.recv()
+
+  def _disc(self):
+    # TODO: Add a test for this.
+    for future in self.futures.values():
+      if not future.done():
+        self._seterr(future, 'Connection lost')
+
+  def _seterr(self, future, message):
+    raised = [False]
+    future.raised = raised
+    future.set_error(message)
+    weakref.finalize(future, lambda: (
+        None if raised[0] else self.errors.append(message)))
 
 
 class Future:
 
-  def __init__(self, waitfn):
-    self.waitfn = waitfn
-    self.raised = None
+  def __init__(self):
+    self.raised = [False]
+    self.con = threading.Condition()
     self.don = False
     self.res = None
     self.msg = None
 
   def wait(self, timeout=None):
     if self.don:
-      return True
-    try:
-      self.waitfn(lambda: self.don, timeout)
-    except TimeoutError:
-      pass
-    return self.don
+      return self.don
+    with self.con:
+      return self.con.wait(timeout)
 
   def done(self):
     return self.don
@@ -145,17 +148,21 @@ class Future:
     if not self.wait(timeout):
       raise TimeoutError
     assert self.don
-    if self.msg is not None:
-      self.raised[0] = True
+    if self.msg is None:
+      return self.res
+    if not self.raised[0]:
       raise RuntimeError(self.msg)
-    return self.res
 
   def set_result(self, result):
     assert not self.don
     self.don = True
     self.res = result
+    with self.con:
+      self.con.notify_all()
 
   def set_error(self, message):
     assert not self.don
     self.don = True
     self.msg = message
+    with self.con:
+      self.con.notify_all()

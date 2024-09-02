@@ -146,10 +146,10 @@ class TestClient:
     # futures are inside the client by the time we block on the third future.
     time.sleep(0.1)
     future3 = client.fn(3)
-    assert len(client.futures) == 3
+    assert len(client.futures) == 1
     assert future3.result() == 3
     del future3
-    assert not client.futures
+    assert len(client.futures) == 0
     client.close()
     server.close()
 
