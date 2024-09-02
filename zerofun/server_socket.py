@@ -114,7 +114,9 @@ class ServerSocket:
           except BlockingIOError:
             pass
           except ConnectionResetError:
-            self._disconnect(conn, recvrest=True)  # TODO: Needed?
+            # The client is gone but we may have buffered messages left to
+            # read, so we keep the socket open until recv() fails.
+            pass  # self._disconnect(conn, recvrest=True)  # TODO: Needed?
     except Exception as e:
       self.error = e
 
