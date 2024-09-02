@@ -101,8 +101,8 @@ class Process:
       exitcode = exitcode if isinstance(exitcode, int) else 0
     except (SystemExit, KeyboardInterrupt) as e:
       compact = traceback.format_tb(e.__traceback__)
-      compact = [line.split('\n', 1)[0] for line in compact]
-      print(f"Killed process '{name}' at:\n{'\n'.join(compact)}")
+      compact = '\n'.join([line.split('\n', 1)[0] for line in compact])
+      print(f"Killed process '{name}' at:\n{compact}")
       exitcode = 2
     except Exception as e:
       contextlib.context.error(e, name)

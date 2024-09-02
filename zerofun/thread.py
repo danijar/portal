@@ -79,8 +79,8 @@ class Thread:
       self.excode = exitcode
     except (SystemExit, KeyboardInterrupt) as e:
       compact = traceback.format_tb(e.__traceback__)
-      compact = [line.split('\n', 1)[0] for line in compact]
-      print(f"Killed thread '{self.name}' at:\n{'\n'.join(compact)}")
+      compact = '\n'.join([line.split('\n', 1)[0] for line in compact])
+      print(f"Killed thread '{self.name}' at:\n{compact}")
       [x.kill(0.1) for x in contextlib.context.get_children(self.ident)]
       self.excode = 2
     except Exception as e:
