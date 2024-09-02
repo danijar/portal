@@ -84,7 +84,8 @@ Several productivity and performance features are available:
 
 If you see a popup *"Do you want the application "Python.app" to accept
 incoming network connections?"* you need to [code sign your Python
-binary](https://stackoverflow.com/a/61462541).
+binary](https://stackoverflow.com/a/61462541) with the [deep
+flag](https://superuser.com/a/1281683).
 
 ## Questions
 

@@ -169,7 +169,8 @@ class ClientSocket:
       sock, addr = self._create()
       try:
         # We need to resolve the address regularly.
-        addr = contextlib.context().resolver(addr)
+        if contextlib.context.resolver:
+          addr = contextlib.context.resolver(addr)
         sock.settimeout(10)
         sock.connect(addr)
         sock.settimeout(0)

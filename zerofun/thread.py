@@ -27,7 +27,7 @@ class Thread:
     name = name or getattr(fn, '__name__', 'thread')
     self.thread = threading.Thread(
         target=self._wrapper, args=args, name=name, daemon=True)
-    contextlib.context().add_child(self)
+    contextlib.context.add_child(self)
     self.started = False
     start and self.start()
 
@@ -62,7 +62,7 @@ class Thread:
 
   def kill(self, timeout=3):
     start = time.time()
-    children = contextlib.context().get_children(self.ident)
+    children = contextlib.context.get_children(self.ident)
     [x.kill(max(0.1, timeout - (time.time() - start))) for x in children]
     utils.kill_threads(self.thread, max(0.1, timeout - (time.time() - start)))
     return self
@@ -73,7 +73,6 @@ class Thread:
     return 'Thread(' + ', '.join(attrs) + ')'
 
   def _wrapper(self, *args):
-    context = contextlib.context()
     try:
       exitcode = self.fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
@@ -82,10 +81,10 @@ class Thread:
       compact = traceback.format_tb(e.__traceback__)
       compact = [line.split('\n', 1)[0] for line in compact]
       print(f"Killed thread '{self.name}' at:\n{'\n'.join(compact)}")
-      [x.kill(0.1) for x in context.get_children(self.ident)]
+      [x.kill(0.1) for x in contextlib.context.get_children(self.ident)]
       self.excode = 2
     except Exception as e:
-      [x.kill(0.1) for x in context.get_children(self.ident)]
-      context.error(e, self.name)
-      context.shutdown(1)
+      [x.kill(0.1) for x in contextlib.context.get_children(self.ident)]
+      contextlib.context.error(e, self.name)
+      contextlib.context.shutdown(1)
       self.excode = 1

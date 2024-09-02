@@ -72,7 +72,7 @@ class TestThread:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):
-    ready = zerofun.context().mp.Event()
+    ready = zerofun.context.mp.Event()
     proc = [None]
     def outer():
       proc[0] = zerofun.Process(inner, ready, start=True)

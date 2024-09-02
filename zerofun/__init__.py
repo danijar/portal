@@ -6,8 +6,9 @@ try:
 except RuntimeError:
   pass
 
-from .contextlib import close
 from .contextlib import context
+from .contextlib import initfn
+from .contextlib import reset
 from .contextlib import setup
 
 from .thread import Thread

@@ -13,11 +13,11 @@ class TestErrfile:
     errfile = pathlib.Path(tmpdir) / 'error'
 
     def fn():
-      zerofun.setup(errfile, check_interval=0.1)
+      zerofun.setup(errfile=errfile, interval=0.1)
       try:
         raise ValueError
       except Exception as e:
-        zerofun.context().error(e, 'worker')
+        zerofun.context.error(e, 'worker')
 
     zerofun.Process(fn, start=True).join()
     content = errfile.read_text()
@@ -29,15 +29,15 @@ class TestErrfile:
   @pytest.mark.parametrize('repeat', range(3))
   def test_sibling_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = zerofun.context().mp.Semaphore(0)
+    ready = zerofun.context.mp.Semaphore(0)
 
     def fn1(ready, errfile):
-      zerofun.setup(errfile, check_interval=0.1)
+      zerofun.setup(errfile=errfile, interval=0.1)
       ready.release()
-      raise ValueError('payload')
+      raise ValueError('reason')
 
     def fn2(ready, errfile):
-      zerofun.setup(errfile, check_interval=0.1)
+      zerofun.setup(errfile=errfile, interval=0.1)
       ready.release()
       while True:
         time.sleep(0.1)
@@ -50,7 +50,7 @@ class TestErrfile:
     worker2.join(3)
     content = errfile.read_text()
     first_line = content.split('\n')[0]
-    assert "Error in 'worker1' (ValueError: payload):" == first_line
+    assert "Error in 'worker1' (ValueError: reason):" == first_line
     assert not worker1.running
     assert not worker2.running
     assert worker1.exitcode == 1
@@ -59,14 +59,14 @@ class TestErrfile:
   @pytest.mark.parametrize('repeat', range(3))
   def test_nested_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = zerofun.context().mp.Semaphore(0)
+    ready = zerofun.context.mp.Semaphore(0)
 
     def hang():
       while True:
         time.sleep(0.1)
 
     def outer(ready, errfile):
-      zerofun.setup(errfile, check_interval=0.1)
+      zerofun.setup(errfile=errfile, interval=0.1)
       zerofun.Process(inner, ready, errfile, name='inner', start=True)
       zerofun.Thread(hang, start=True)
       zerofun.Process(hang, start=True)
@@ -74,16 +74,16 @@ class TestErrfile:
       hang()
 
     def inner(ready, errfile):
-      zerofun.setup(errfile, check_interval=0.1)
+      zerofun.setup(errfile=errfile, interval=0.1)
       zerofun.Thread(hang, start=True)
       zerofun.Process(hang, start=True)
       ready.release()
-      raise ValueError('payload')
+      raise ValueError('reason')
 
     worker = zerofun.Process(outer, ready, errfile, name='outer', start=True)
     ready.acquire()
     ready.acquire()
     worker.join(3)
     content = errfile.read_text()
-    assert "Error in 'inner' (ValueError: payload):" == content.split('\n')[0]
+    assert "Error in 'inner' (ValueError: reason):" == content.split('\n')[0]
     assert not worker.running

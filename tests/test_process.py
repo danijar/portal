@@ -47,7 +47,7 @@ class TestProcess:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):
-    ready = zerofun.context().mp.Semaphore(0)
+    ready = zerofun.context.mp.Semaphore(0)
     def outer(ready):
       zerofun.Process(inner, ready, start=True)
       ready.release()
@@ -66,7 +66,7 @@ class TestProcess:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subthread(self, repeat):
-    ready = zerofun.context().mp.Event()
+    ready = zerofun.context.mp.Event()
     def outer(ready):
       zerofun.Thread(inner, ready, start=True)
       while True:
@@ -82,19 +82,23 @@ class TestProcess:
     assert worker.exitcode == -15
 
   def test_initfn(self):
-    zerofun.setup()
-    def initfn():
+
+    def init():
       zerofun.foo = 42
-    zerofun.context().initfn(initfn)
-    ready = zerofun.context().mp.Event()
+
+    zerofun.initfn(init)
+    ready = zerofun.context.mp.Event()
     assert zerofun.foo == 42
+
     def outer(ready):
       assert zerofun.foo == 42
       zerofun.Process(inner, ready, start=True).join()
+
     def inner(ready):
       assert zerofun.foo == 42
       ready.set()
+
     zerofun.Process(outer, ready, start=True).join()
     ready.wait()
     assert ready.is_set()
-    zerofun.context().close()
+    zerofun.reset()

@@ -23,17 +23,18 @@ class Process:
   3. When the parent process encounters an error, the subprocess will be killed
   via `atexit`, preventing hangs.
 
-  4. It inherits the context() object of its parent process, which provides
+  4. It inherits the context object of its parent process, which provides
   cloudpickled initializer functions for each nested child process and error
   file watching for global shutdown on error.
   """
 
-  def __init__(self, fn, *args, name=None, start=False, context=None):
+  def __init__(self, fn, *args, name=None, start=False):
     name = name or getattr(fn, '__name__', 'process')
     fn = cloudpickle.dumps(fn)
-    context = context or contextlib.context()
+    context = contextlib.context
+    options = context.options()
     self.process = context.mp.Process(
-        target=self._wrapper, name=name, args=(context, name, fn, args))
+        target=self._wrapper, name=name, args=(options, name, fn, args))
     context.add_child(self)
     self.started = False
     atexit.register(self.kill)
@@ -68,6 +69,7 @@ class Process:
     return self
 
   def join(self, timeout=None):
+    assert self.started
     if self.running:
       self.process.join(timeout)
     return self
@@ -90,11 +92,10 @@ class Process:
     return 'Process(' + ', '.join(attrs) + ')'
 
   @staticmethod
-  def _wrapper(context, name, fn, args):
+  def _wrapper(options, name, fn, args):
     exitcode = 0
     try:
-      context.start()
-      contextlib.CONTEXT = context
+      contextlib.setup(**options)
       fn = cloudpickle.loads(fn)
       exitcode = fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
@@ -104,7 +105,7 @@ class Process:
       print(f"Killed process '{name}' at:\n{'\n'.join(compact)}")
       exitcode = 2
     except Exception as e:
-      contextlib.context().error(e, name)
+      contextlib.context.error(e, name)
       exitcode = 1
     finally:
-      contextlib.context().shutdown(exitcode)
+      contextlib.context.shutdown(exitcode)

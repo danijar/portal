@@ -3,7 +3,6 @@ import multiprocessing as mp
 import os
 import pathlib
 import threading
-import time
 import traceback
 
 import cloudpickle
@@ -14,56 +13,64 @@ from . import utils
 
 class Context:
 
-  def __init__(self, errfile=None, check_interval=20, resolver=None):
-    if errfile and isinstance(errfile, str):
-      errfile = pathlib.Path(errfile)
-    self.check_interval = check_interval
-    self.children = collections.defaultdict(list)
-    self.errfile = errfile
+  def __init__(self):
     self.initfns = []
+    self.resolver = None
+    self.errfile = None
+    self.interval = 20
+    self.done = threading.Event()
+    self.watcher = None
+    self.children = collections.defaultdict(list)
     self.mp = mp.get_context()
     self.printlock = self.mp.Lock()
-    self.resolver = None
-    self.resolver_bin = cloudpickle.dumps(resolver or (lambda x: x))
-    self.watcher = None
-    self.started = False
-    self.start()
 
-  def __getstate__(self):
+  def options(self):
     return {
-        'check_interval': self.check_interval,
+        'resolver': self.resolver and cloudpickle.dumps(self.resolver),
         'errfile': self.errfile,
+        'interval': self.interval,
         'initfns': self.initfns,
-        'printlock': self.printlock,
-        'resolver_bin': self.resolver_bin,
     }
 
-  def __setstate__(self, d):
-    self.check_interval = d['check_interval']
-    self.children = collections.defaultdict(list)
-    self.errfile = d['errfile']
-    self.initfns = d['initfns']
-    self.mp = mp.get_context()
-    self.printlock = d['printlock']
-    self.resolver = None
-    self.resolver_bin = d['resolver_bin']
-    self.watcher = None
-    self.started = False
+  def setup(
+      self,
+      resolver=None,
+      errfile=None,
+      interval=None,
+      initfns=None,
+  ):
 
-  def initfn(self, initfn):
-    self.initfns.append(cloudpickle.dumps(initfn))
-    initfn()
+    if resolver:
+      if isinstance(resolver, bytes):
+        resolver = cloudpickle.loads(resolver)
+      assert callable(resolver)
+      self.resolver = resolver
 
-  def start(self):
-    if self.started:
-      return
-    self.started = True
-    initfns = [cloudpickle.loads(x) for x in self.initfns]
-    [x() for x in initfns]
-    self.resolver = cloudpickle.loads(self.resolver_bin)
-    if self.errfile:
+    if errfile:
+      if isinstance(errfile, str):
+        errfile = pathlib.Path(errfile)
+      assert hasattr(errfile, 'exists') and hasattr(errfile, 'write_text')
+      self.errfile = errfile
+
+    if interval:
+      assert isinstance(interval, (int, float))
+      self.interval = interval
+
+    if initfns:
+      for fn in initfns:
+        self.initfn(fn, call_now=True)
+
+    if self.errfile and not self.watcher:
       self.watcher = threading.Thread(target=self._watcher, daemon=True)
       self.watcher.start()
+
+  def initfn(self, fn, call_now=True):
+    if isinstance(fn, bytes):
+      pkl, fn = fn, cloudpickle.loads(fn)
+    else:
+      pkl, fn = cloudpickle.dumps(fn), fn
+    self.initfns.append(pkl)
+    call_now and fn()
 
   def error(self, e, name=None):
     typ, tb = type(e), e.__traceback__
@@ -75,16 +82,17 @@ class Context:
       reset = utils.style(reset=True)
       print(style + '\n---\n' + message + reset)
     if self.errfile:
-      with self.errfile.open('wb') as f:
-        f.write(message.encode('utf-8'))
+      self.errfile.write_text(message)
+      print(f'Wrote errorfile: {self.errfile}')
 
   def shutdown(self, exitcode):
     utils.kill_procs(psutil.Process().children(recursive=True))
     os._exit(exitcode)
 
   def close(self):
+    self.done.set()
     if self.watcher:
-      utils.kill_threads(self.watcher)
+      self.watcher.join()
 
   def add_child(self, worker):
     parent = threading.get_ident()
@@ -96,32 +104,26 @@ class Context:
     return self.children[ident]
 
   def _watcher(self):
-    try:
-      while True:
-        time.sleep(self.check_interval)
-        if self.errfile and self.errfile.exists():
-          print('Detected error file thus shutting down:')
-          print(self.errfile.read_text())
-          self.shutdown(2)
-    except (SystemExit, KeyboardInterrupt):
-      pass
+    while True:
+      if self.done.wait(self.interval):
+        break
+      if self.errfile and self.errfile.exists():
+        print(f'Shutting down due to error file: {self.errfile}')
+        self.shutdown(2)
 
 
-CONTEXT = None
+context = Context()
 
-def setup(errfile=None, check_interval=20, initfns=[]):
-  global CONTEXT
-  CONTEXT and CONTEXT.close()
-  CONTEXT = Context(errfile, check_interval)
-  [CONTEXT.initfn(x) for x in initfns]
-  return CONTEXT
 
-def context():
-  global CONTEXT
-  CONTEXT = CONTEXT or Context()
-  return CONTEXT
+def initfn(fn):
+  context.initfn(fn)
 
-def close():
-  global CONTEXT
-  CONTEXT.close()
-  CONTEXT = None
+
+def setup(**kwargs):
+  context.setup(**kwargs)
+
+
+def reset():
+  global context
+  context.close()
+  context = Context()

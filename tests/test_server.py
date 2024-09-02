@@ -227,7 +227,7 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_sharray(self, Server):
-    done = zerofun.context().mp.Event()
+    done = zerofun.context.mp.Event()
 
     def server(port, done):
       server = Server(port)

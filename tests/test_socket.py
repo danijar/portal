@@ -96,7 +96,7 @@ class TestSocket:
   @pytest.mark.parametrize('repeat', range(3))
   def test_server_dies(self, repeat):
     port = zerofun.free_port()
-    q = zerofun.context().mp.Queue()
+    q = zerofun.context.mp.Queue()
 
     def server_fn(port, q):
       # Receive exactly one message and then exit wihout close().
