@@ -5,6 +5,7 @@ import selectors
 import socket
 
 from . import buffers
+from . import contextlib
 from . import thread
 from . import utils
 
@@ -38,12 +39,13 @@ class ServerSocket:
       port = int(port.rsplit(':', 1)[1])
     self.name = name
     self.options = Options(**kwargs)
+    hostname = contextlib.context.hostname
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-      self.addr = ('', port, 0, 0)
+      self.addr = (hostname, port, 0, 0)
     else:
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      self.addr = ('', port)
+      self.addr = (hostname, port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self.sock.bind(self.addr)
     self.sock.setblocking(False)

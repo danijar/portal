@@ -1,4 +1,3 @@
-import sys
 import time
 
 import pytest
@@ -92,7 +91,6 @@ class TestSocket:
     server.close()
     client.close()
 
-  @pytest.mark.skipif(sys.platform == 'darwin', reason='firewall popups')
   @pytest.mark.parametrize('repeat', range(3))
   def test_server_dies(self, repeat):
     port = zerofun.free_port()
@@ -101,7 +99,13 @@ class TestSocket:
     def server_fn(port, q):
       # Receive exactly one message and then exit wihout close().
       server = zerofun.ServerSocket(port)
-      q.put(bytes(server.recv()[1]))
+      print('server start')
+      x = bytes(server.recv()[1])
+      print('received', x)
+      q.put(x)
+      q.close()
+      q.join_thread()
+      print('server done')
 
     def client_fn(port, q):
       client = zerofun.ClientSocket(
@@ -111,6 +115,7 @@ class TestSocket:
           keepalive_every=1,
           keepalive_fails=1)
       try:
+        assert client.connected
         while True:
           client.send(b'method')
           time.sleep(0.1)
@@ -118,17 +123,27 @@ class TestSocket:
         q.put(b'bye')
         client.connect(timeout=None)
         client.send(b'hi')
+      q.close()
+      q.join_thread()
       client.close()
 
     server = zerofun.Process(server_fn, port, q, start=True)
     client = zerofun.Process(client_fn, port, q, start=True)
+    print('a')
     assert q.get() == b'method'
+    print('b')
     server.join()
+    print('c')
     assert q.get() == b'bye'
+    print('d')
     server = zerofun.Process(server_fn, port, q, start=True)
+    print('e')
     server.join()
+    print('f')
     client.join()
+    print('g')
     assert q.get() == b'hi'
+    print('h')
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_twoway(self, repeat, size=1024 ** 2, prefetch=8):

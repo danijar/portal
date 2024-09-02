@@ -14,6 +14,7 @@ from . import utils
 class Context:
 
   def __init__(self):
+    self.hostname = ''
     self.initfns = []
     self.resolver = None
     self.errfile = None
@@ -26,6 +27,7 @@ class Context:
 
   def options(self):
     return {
+        'hostname': self.hostname,
         'resolver': self.resolver and cloudpickle.dumps(self.resolver),
         'errfile': self.errfile,
         'interval': self.interval,
@@ -34,11 +36,16 @@ class Context:
 
   def setup(
       self,
+      hostname=None,
       resolver=None,
       errfile=None,
       interval=None,
       initfns=None,
   ):
+
+    if hostname is not None:
+      assert isinstance(hostname, str)
+      self.hostname = hostname
 
     if resolver:
       if isinstance(resolver, bytes):

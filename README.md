@@ -83,8 +83,9 @@ Several productivity and performance features are available:
 ### Popup on MacOS
 
 If you see a popup *"Do you want the application "Python.app" to accept
-incoming network connections?"* you need to [code sign your Python
-binary](https://stackoverflow.com/a/61462541) with the [deep
+incoming network connections?"* you can either restrict your server sockets to
+the local machine using `zerofun.setup(hostname='localhost')` or [code sign
+your Python binary](https://stackoverflow.com/a/61462541) with the [deep
 flag](https://superuser.com/a/1281683).
 
 ## Questions

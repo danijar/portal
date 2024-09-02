@@ -4,6 +4,9 @@ import pytest
 import zerofun
 
 
+# TODO: Leaked semaphore warnings.
+
+
 class TestProcess:
 
   def test_exitcode(self):
@@ -101,4 +104,4 @@ class TestProcess:
     zerofun.Process(outer, ready, start=True).join()
     ready.wait()
     assert ready.is_set()
-    zerofun.reset()
+    zerofun.context.initfns.clear()
