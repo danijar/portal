@@ -1,6 +1,5 @@
 import struct
 
-import elements
 import msgpack
 import numpy as np
 
@@ -8,7 +7,7 @@ from . import sharray
 
 
 def pack(data):
-  leaves, treedef = elements.tree.flatten(data)
+  leaves, treedef = tree_flatten(data)
   specs, buffers = [], []
   for value in leaves:
     if value is None:
@@ -71,8 +70,48 @@ def unpack(buffer):
       leaves.append(sharray.SharedArray(*spec[1:]))
     else:
       raise NotImplementedError(spec)
-  data = elements.tree.unflatten(leaves, treedef)
+  data = tree_unflatten(leaves, treedef)
   return data
+
+
+def tree_map(fn, *trees, isleaf=None):
+  assert trees, 'Provide one or more nested Python structures'
+  kw = dict(isleaf=isleaf)
+  first = trees[0]
+  try:
+    assert all(isinstance(x, type(first)) for x in trees)
+    if isleaf and isleaf(trees[0]):
+      return fn(*trees)
+    if isinstance(first, list):
+      assert all(len(x) == len(first) for x in trees)
+      return [tree_map(
+          fn, *[t[i] for t in trees], **kw) for i in range(len(first))]
+    if isinstance(first, tuple):
+      assert all(len(x) == len(first) for x in trees)
+      return tuple([tree_map(
+          fn, *[t[i] for t in trees], **kw) for i in range(len(first))])
+    if isinstance(first, dict):
+      assert all(set(x.keys()) == set(first.keys()) for x in trees)
+      return {k: tree_map(fn, *[t[k] for t in trees], **kw) for k in first}
+    if hasattr(first, 'keys') and hasattr(first, 'get'):
+      assert all(set(x.keys()) == set(first.keys()) for x in trees)
+      return type(first)(
+          {k: tree_map(fn, *[t[k] for t in trees], **kw) for k in first})
+  except AssertionError:
+    raise TypeError('Tree structure differs between arguments')
+  return fn(*trees)
+
+
+def tree_flatten(tree, isleaf=None):
+  leaves = []
+  tree_map(lambda x: leaves.append(x), tree, isleaf=isleaf)
+  structure = tree_map(lambda x: None, tree, isleaf=isleaf)
+  return tuple(leaves), structure
+
+
+def tree_unflatten(leaves, structure):
+  leaves = iter(tuple(leaves))
+  return tree_map(lambda x: next(leaves), structure)
 
 
 def tree_equals(xs, ys):

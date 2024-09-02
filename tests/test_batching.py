@@ -8,8 +8,16 @@ import zerofun
 BATCH_SERVERS = [
     zerofun.BatchServer,
     functools.partial(zerofun.BatchServer, process=False),
-    functools.partial(zerofun.BatchServer, shmem=True),  # TODO
+    functools.partial(zerofun.BatchServer, shmem=True),
 ]
+
+
+# TODO test:
+# - multiple workers
+# - some client drops and comes back up
+# - server drops and comes back up
+# - test error types
+# - test done fn
 
 
 class TestBatching:
@@ -94,10 +102,3 @@ class TestBatching:
       assert zerofun.tree_equals(result, data)
     client.close()
     server.close()
-
-  # TODO:
-  # - multiple workers
-  # - some client drops and comes back up
-  # - server drops and comes back up
-  # - test error types
-  # - test done fn

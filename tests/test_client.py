@@ -4,7 +4,8 @@ import time
 import pytest
 import zerofun
 
-# TODO:
+
+# TODO test:
 # - server dies while client is maxinflight waiting, should raise Disconnected
 # if reconnect=False and otherwise should reconnect
 
