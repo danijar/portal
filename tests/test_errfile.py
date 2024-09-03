@@ -44,8 +44,8 @@ class TestErrfile:
     worker2 = zerofun.Process(fn2, ready, errfile, name='worker2', start=True)
     ready.acquire()
     ready.acquire()
-    worker1.join(3)
-    worker2.join(3)
+    worker1.join()
+    worker2.join()
     content = errfile.read_text()
     first_line = content.split('\n')[0]
     assert "Error in 'worker1' (ValueError: reason):" == first_line
@@ -81,7 +81,7 @@ class TestErrfile:
     worker = zerofun.Process(outer, ready, errfile, name='outer', start=True)
     ready.acquire()
     ready.acquire()
-    worker.join(3)
+    worker.join()
     content = errfile.read_text()
     assert "Error in 'inner' (ValueError: reason):" == content.split('\n')[0]
     assert not worker.running

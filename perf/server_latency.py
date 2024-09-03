@@ -31,6 +31,7 @@ def main():
       ping = sum(durations) / len(durations)
       print(1000 * ping)  # <1ms
 
+  zerofun.setup(hostname='localhost')
   port = zerofun.free_port()
   zerofun.run([
       zerofun.Process(server, port),

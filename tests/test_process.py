@@ -4,9 +4,6 @@ import pytest
 import zerofun
 
 
-# TODO: Leaked semaphore warnings.
-
-
 class TestProcess:
 
   def test_exitcode(self):
@@ -85,22 +82,17 @@ class TestProcess:
     assert worker.exitcode == -15
 
   def test_initfn(self):
-
     def init():
       zerofun.foo = 42
-
     zerofun.initfn(init)
     ready = zerofun.context.mp.Event()
     assert zerofun.foo == 42
-
     def outer(ready):
       assert zerofun.foo == 42
       zerofun.Process(inner, ready, start=True).join()
-
     def inner(ready):
       assert zerofun.foo == 42
       ready.set()
-
     zerofun.Process(outer, ready, start=True).join()
     ready.wait()
     assert ready.is_set()

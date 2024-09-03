@@ -44,6 +44,7 @@ def main():
       mbps *= 2 if twoway else 1
       print(mbps)  # 4000 oneway, 3000 twoway
 
+  zerofun.setup(hostname='localhost')
   port = zerofun.free_port()
   zerofun.run([
       zerofun.Process(server, port),

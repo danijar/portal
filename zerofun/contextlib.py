@@ -2,7 +2,9 @@ import collections
 import multiprocessing as mp
 import os
 import pathlib
+import sys
 import threading
+import time
 import traceback
 
 import cloudpickle
@@ -93,6 +95,9 @@ class Context:
       print(f'Wrote errorfile: {self.errfile}')
 
   def shutdown(self, exitcode):
+    # This kills the process tree forcefully to prevent hangs but results in
+    # leaked semaphore warnings. However, the leaked objects are still cleaned
+    # up by the resource tracker process of Python's multiprocessing module.
     utils.kill_procs(psutil.Process().children(recursive=True))
     os._exit(exitcode)
 
