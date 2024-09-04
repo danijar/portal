@@ -92,6 +92,11 @@ class Client:
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
     future = self.futures.pop(reqnum, None)
+    if not future and not self.socket.options.autoconn:
+      # TODO: Why do we sometimes receive delayed respones from the server
+      # after client socket has called disconnect callback already?
+      self.socket.recv()
+      return
     assert future, (
         f'Unexpected request number: {reqnum}',
         sorted(self.futures.keys()))
@@ -108,8 +113,9 @@ class Client:
   def _disc(self):
     if not self.socket.options.autoconn:
       for future in self.futures.values():
-        if not future.done():
-          self._seterr(future, client_socket.Disconnected)
+        assert not future.done()
+        self._seterr(future, client_socket.Disconnected)
+      self.futures.clear()
 
   def _seterr(self, future, e):
     raised = [False]
@@ -151,6 +157,7 @@ class Future:
     if self.err is None:
       return self.res
     if not self.raised[0]:
+      self.raised[0] = True
       raise self.err
 
   def set_result(self, result):

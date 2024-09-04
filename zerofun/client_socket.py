@@ -22,7 +22,7 @@ class Options:
 
   ipv6: bool = False
   autoconn: bool = True
-  resend: bool = False
+  resend: bool = True  # TODO
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 128
   max_send_queue: int = 128
@@ -161,6 +161,7 @@ class ClientSocket:
             self.sendq[0].reset()
         else:
           self.sendq.clear()
+        recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
         [x() for x in self.callbacks_disc]
         continue
 

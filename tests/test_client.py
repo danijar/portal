@@ -38,7 +38,8 @@ class TestClient:
     client.close()
     server.close()
 
-  def test_manual_reconnect(self):
+  @pytest.mark.parametrize('repeat', range(10))
+  def test_manual_reconnect(self, repeat):
     port = zerofun.free_port()
     server = zerofun.Server(port)
     server.bind('fn', lambda x: x)
@@ -250,9 +251,9 @@ class TestClient:
       zerofun.Thread(client),
     ])
 
-  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('repeat', range(10))
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_server_drops_autoconn(self, repeat, Server):
+  def test_server_drops_autoconn(self, repeat, Server):  # TODO: Sometimes hangs
     port = zerofun.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
@@ -262,7 +263,6 @@ class TestClient:
       server.bind('fn', lambda x: x)
       server.start(block=False)
       a.wait()
-      time.sleep(0.1)
       server.close()
       stats = server.stats()
       assert stats['numrecv'] < 3
@@ -270,19 +270,22 @@ class TestClient:
       server = Server(port)
       server.bind('fn', lambda x: x)
       server.start(block=False)
+      print('111')
       b.wait()
+      print('222')
       server.close()
 
     def client():
       client = zerofun.Client(
-          'localhost', port, maxinflight=1, autoconn=True)
+          'localhost', port, maxinflight=1, autoconn=True, resend=True)
       assert client.fn(1).result() == 1
       a.wait()
-      time.sleep(0.05)
       assert client.fn(2).result() == 2
-      time.sleep(0.05)
+      time.sleep(0.1)
       assert client.fn(3).result() == 3
+      print('AAA')
       b.wait()
+      print('BBB')
       client.close()
 
     zerofun.run([
