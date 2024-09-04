@@ -79,6 +79,9 @@ def kill_procs(procs, timeout=3):
 
 
 def free_port():
+  # Return a port that is currently free. This function is not thread or
+  # process safe, because there is no way to guarantee that the port will still
+  # be free at the time it will be used.
   rng = np.random.default_rng()
   while True:
     port = int(rng.integers(2000, 7000))
