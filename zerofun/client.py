@@ -62,9 +62,12 @@ class Client:
   def call(self, method, *data):
     reqnum = next(self.reqnum).to_bytes(8, 'little', signed=False)
     start = time.time()
-    if self._numinflight() >= self.maxinflight:
-      with self.cond:
-        self.cond.wait_for(lambda: self._numinflight() < self.maxinflight)
+    while self._numinflight() >= self.maxinflight:
+      with self.cond: self.cond.wait(timeout=0.2)
+      try:
+        self.socket._require_connection(timeout=0)
+      except TimeoutError:
+        pass
     with self.lock:
       self.waitmean[1] += time.time() - start
       self.waitmean[0] += 1

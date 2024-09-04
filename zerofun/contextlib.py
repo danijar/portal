@@ -107,12 +107,14 @@ class Context:
       self.watcher.join()
 
   def add_child(self, worker):
-    parent = threading.get_ident()
-    if hasattr(worker, 'thread'):
-      assert worker.thread.ident != parent
-    self.children[parent].append(worker)
+    ident = threading.get_ident()
+    if hasattr(worker, 'ident'):
+      assert worker.ident != ident
+    self.children[ident].append(worker)
 
-  def get_children(self, ident):
+  def get_children(self, ident=None):
+    if ident is None:
+      ident = threading.get_ident()
     return self.children[ident]
 
   def _watcher(self):

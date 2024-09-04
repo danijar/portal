@@ -49,6 +49,7 @@ class Server:
 
   def close(self, timeout=None):
     assert self.running
+    self.socket.shutdown()
     self.running = False
     self.loop.join(timeout)
     self.loop.kill()

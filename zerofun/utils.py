@@ -35,7 +35,7 @@ def kill_threads(threads, timeout=3):
   threads = [x for x in threads if x is not threading.main_thread()]
   for thread in threads:
     if thread.native_id is None:
-      # Wait because threa may currently be starting.
+      # Wait because thread may currently be starting.
       time.sleep(0.2)
     matches = [k for k, v in threading._active.items() if v is thread]
     if not matches:

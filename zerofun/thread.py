@@ -61,10 +61,7 @@ class Thread:
     return self
 
   def kill(self, timeout=3):
-    start = time.time()
-    children = contextlib.context.get_children(self.ident)
-    [x.kill(max(0.1, timeout - (time.time() - start))) for x in children]
-    utils.kill_threads(self.thread, max(0.1, timeout - (time.time() - start)))
+    utils.kill_threads(self.thread, timeout)
     return self
 
   def __repr__(self):
@@ -81,10 +78,10 @@ class Thread:
       compact = traceback.format_tb(e.__traceback__)
       compact = '\n'.join([line.split('\n', 1)[0] for line in compact])
       print(f"Killed thread '{self.name}' at:\n{compact}")
-      [x.kill(0.1) for x in contextlib.context.get_children(self.ident)]
+      [x.kill(0.1) for x in contextlib.context.get_children()]
       self.excode = 2
     except Exception as e:
-      [x.kill(0.1) for x in contextlib.context.get_children(self.ident)]
+      [x.kill(0.1) for x in contextlib.context.get_children()]
       contextlib.context.error(e, self.name)
       contextlib.context.shutdown(1)
       self.excode = 1

@@ -55,6 +55,7 @@ class ServerSocket:
     self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')
     self.conns = {}
     self.recvq = queue.Queue()  # [(addr, bytes)]
+    self.reading = True
     self.running = True
     self.error = None
     self.thread = thread.Thread(self._loop, name=f'{name}Loop', start=True)
@@ -85,6 +86,14 @@ class ServerSocket:
     except KeyError:
       self._log('Dropping message to disconnected client')
 
+  def shutdown(self):
+    self.reading = False
+    for sock in [self.sock, *[conn.sock for conn in self.conns.values()]]:
+      try:
+        sock.shutdown(socket.SHUT_RD)  # Stop allowing incoming data.
+      except OSError:
+        pass  # There is no lock so the loop thread may have just closed it.
+
   def close(self, timeout=None):
     self.running = False
     self.thread.join(timeout)
@@ -97,10 +106,10 @@ class ServerSocket:
       while self.running or self._numsending():
         writeable = []
         for key, mask in self.sel.select(timeout=0.2):
-          if key.data is None:
+          if key.data is None and self.reading:
             assert mask & selectors.EVENT_READ
             self._accept(key.fileobj)
-          elif mask & selectors.EVENT_READ:
+          elif mask & selectors.EVENT_READ and self.reading:
             self._recv(key.data)
           elif mask & selectors.EVENT_WRITE:
             writeable.append(key.data)
@@ -116,7 +125,7 @@ class ServerSocket:
           except ConnectionResetError:
             # The client is gone but we may have buffered messages left to
             # read, so we keep the socket open until recv() fails.
-            pass  # self._disconnect(conn, recvrest=True)  # TODO: Needed?
+            pass
     except Exception as e:
       self.error = e
 
@@ -135,7 +144,7 @@ class ServerSocket:
     try:
       conn.recvbuf.recv(conn.sock)
     except ConnectionResetError:
-      self._disconnect(conn, recvrest=False)
+      self._disconnect(conn)
       return
     if conn.recvbuf.done():
       if self.recvq.qsize() > self.options.max_recv_queue:
@@ -143,13 +152,7 @@ class ServerSocket:
       self.recvq.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
 
-  def _disconnect(self, conn, recvrest):
-    if recvrest and False:  # TODO: Needed?
-      try:
-        while True:
-          self._recv(conn)
-      except OSError:
-        pass
+  def _disconnect(self, conn):
     self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]}')
     conn = self.conns.pop(conn.addr)
     if conn.sendbufs:

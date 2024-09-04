@@ -5,11 +5,6 @@ import pytest
 import zerofun
 
 
-# TODO test:
-# - server dies while client is maxinflight waiting, should raise Disconnected
-# if reconnect=False and otherwise should reconnect
-
-
 class TestClient:
 
   def test_none_result(self):
@@ -120,7 +115,7 @@ class TestClient:
       with lock:
         parallel[0] += 1
         assert parallel[0] <= 2
-      time.sleep(0.2)
+      time.sleep(0.1)
       with lock:
         parallel[0] -= 1
       return data
@@ -133,6 +128,62 @@ class TestClient:
     assert results == list(range(16))
     client.close()
     server.close()
+
+  @pytest.mark.parametrize('repeat', range(10))
+  def test_maxinflight_disconnect(self, repeat):
+    port = zerofun.free_port()
+    a = threading.Barrier(3)
+    b = threading.Barrier(2)
+    c = threading.Barrier(2)
+
+    def server():
+      def fn(x):
+        if x in (1, 2):
+          a.wait()
+        time.sleep(0.1)
+        return x
+      server = zerofun.Server(port)
+      server.bind('fn', fn, workers=2)
+      server.start(block=False)
+      # Close server after receiving two requests but before responding to any
+      # of them, to ensure the client is waiting for maxinflight during the
+      # disconnect.
+      a.wait()
+      server.close()
+      b.wait()
+      server = zerofun.Server(port)
+      server.bind('fn', fn)
+      server.start(block=False)
+      c.wait()
+      server.close()
+
+    def client():
+      client = zerofun.Client(
+          'localhost', port, maxinflight=2, reconnect=False)
+      start = time.time()
+      future1 = client.fn(1)
+      time.sleep(0.1)
+      future2 = client.fn(2)
+      assert time.time() - start < 0.2
+      try:
+        client.fn(3)
+        client.fn(3)
+        client.fn(3)
+        assert False
+      except zerofun.Disconnected:
+        assert True
+      assert future1.result() == 1
+      assert future2.result() == 2
+      b.wait()
+      client.connect()
+      assert client.fn(4).result() == 4
+      c.wait()
+      client.close()
+
+    zerofun.run([
+      zerofun.Thread(server),
+      zerofun.Thread(client),
+    ])
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_future_cleanup(self, repeat):
