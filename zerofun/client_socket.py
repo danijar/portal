@@ -22,7 +22,6 @@ class Options:
 
   ipv6: bool = False
   autoconn: bool = True
-  resend: bool = True  # TODO
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 128
   max_send_queue: int = 128
@@ -156,11 +155,12 @@ class ClientSocket:
         self.isconn.clear()
         sel.unregister(sock)
         sock.close()
-        if self.options.resend:
-          if self.sendq:
-            self.sendq[0].reset()
-        else:
-          self.sendq.clear()
+        # Clear message queue on disconnect. There is no meaningful concept of
+        # sucessful delivery of a message at this level. For example, the
+        # server could receive the message but then go down immediately after,
+        # without doing anything meaningful with the message. Resending can be
+        # done based on response messages at a higher level.
+        self.sendq.clear()
         recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
         [x() for x in self.callbacks_disc]
         continue

@@ -14,11 +14,6 @@ class Client:
   def __init__(
       self, host, port, name='Client', maxinflight=16, **kwargs):
     assert 1 <= maxinflight, maxinflight
-    self.socket = client_socket.ClientSocket(
-        host, port, f'{name}Socket', start=False, **kwargs)
-    self.socket.callbacks_recv.append(self._recv)
-    self.socket.callbacks_disc.append(self._disc)
-    self.socket.start()
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
@@ -28,6 +23,14 @@ class Client:
     self.waitmean = [0, 0]
     self.cond = threading.Condition()
     self.lock = threading.Lock()
+    # Socket is created after the above attributes because the callbacks access
+    # some of the attributes.
+    self.socket = client_socket.ClientSocket(
+        host, port, f'{name}Socket', start=False, **kwargs)
+    self.socket.callbacks_recv.append(self._recv)
+    self.socket.callbacks_disc.append(self._disc)
+    self.socket.callbacks_conn.append(self._conn)
+    self.socket.start()
 
   @property
   def connected(self):
@@ -76,8 +79,11 @@ class Client:
       raise self.errors.popleft()
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
-    self.socket.send(reqnum, strlen, name, *packlib.pack(data))
+    sendargs = (reqnum, strlen, name, *packlib.pack(data))
+    # self.socket.send(reqnum, strlen, name, *packlib.pack(data))
+    self.socket.send(*sendargs)
     future = Future()
+    future.sendargs = sendargs
     self.futures[reqnum] = future
     return future
 
@@ -92,11 +98,6 @@ class Client:
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
     future = self.futures.pop(reqnum, None)
-    if not future and not self.socket.options.autoconn:
-      # TODO: Why do we sometimes receive delayed respones from the server
-      # after client socket has called disconnect callback already?
-      self.socket.recv()
-      return
     assert future, (
         f'Unexpected request number: {reqnum}',
         sorted(self.futures.keys()))
@@ -111,11 +112,19 @@ class Client:
     self.socket.recv()
 
   def _disc(self):
-    if not self.socket.options.autoconn:
+    if self.socket.options.autoconn:
       for future in self.futures.values():
-        assert not future.done()
+        future.resend = True
+    else:
+      for future in self.futures.values():
         self._seterr(future, client_socket.Disconnected)
       self.futures.clear()
+
+  def _conn(self):
+    if self.socket.options.autoconn:
+      for future in self.futures.values():
+        if getattr(future, 'resend', False):
+          self.socket.send(*future.sendargs)
 
   def _seterr(self, future, e):
     raised = [False]

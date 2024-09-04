@@ -226,18 +226,10 @@ class TestClient:
       client = zerofun.Client(
           'localhost', port, maxinflight=2, autoconn=False)
       client.connect()
-      start = time.time()
       future1 = client.fn(1)
-      time.sleep(0.1)
       future2 = client.fn(2)
-      assert time.time() - start < 0.2
-      try:
-        client.fn(3)
-        client.fn(3)
-        client.fn(3)
-        assert False
-      except zerofun.Disconnected:
-        assert True
+      with pytest.raises(zerofun.Disconnected):
+        client.fn(3).result()
       assert future1.result() == 1
       assert future2.result() == 2
       b.wait()
@@ -253,10 +245,11 @@ class TestClient:
 
   @pytest.mark.parametrize('repeat', range(10))
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_server_drops_autoconn(self, repeat, Server):  # TODO: Sometimes hangs
+  def test_server_drops_autoconn(self, repeat, Server):
     port = zerofun.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
+    c = threading.Barrier(2)
 
     def server():
       server = Server(port)
@@ -265,27 +258,25 @@ class TestClient:
       a.wait()
       server.close()
       stats = server.stats()
-      assert stats['numrecv'] < 3
+      assert stats['numrecv'] == 1
       assert stats['numsend'] == stats['numrecv']
+      b.wait()
       server = Server(port)
       server.bind('fn', lambda x: x)
       server.start(block=False)
-      print('111')
-      b.wait()
-      print('222')
+      c.wait()
       server.close()
 
     def client():
       client = zerofun.Client(
-          'localhost', port, maxinflight=1, autoconn=True, resend=True)
+          'localhost', port, maxinflight=1, autoconn=True)
       assert client.fn(1).result() == 1
       a.wait()
+      b.wait()
       assert client.fn(2).result() == 2
       time.sleep(0.1)
       assert client.fn(3).result() == 3
-      print('AAA')
-      b.wait()
-      print('BBB')
+      c.wait()
       client.close()
 
     zerofun.run([
