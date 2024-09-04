@@ -130,7 +130,8 @@ class TestClient:
     server.close()
 
   @pytest.mark.parametrize('repeat', range(10))
-  def test_maxinflight_disconnect(self, repeat):
+  @pytest.mark.parametrize('Server', [zerofun.Server, zerofun.BatchServer])
+  def test_maxinflight_disconnect(self, repeat, Server):
     port = zerofun.free_port()
     a = threading.Barrier(3)
     b = threading.Barrier(2)
@@ -142,7 +143,7 @@ class TestClient:
           a.wait()
         time.sleep(0.1)
         return x
-      server = zerofun.Server(port)
+      server = Server(port)
       server.bind('fn', fn, workers=2)
       server.start(block=False)
       # Close server after receiving two requests but before responding to any
@@ -151,7 +152,7 @@ class TestClient:
       a.wait()
       server.close()
       b.wait()
-      server = zerofun.Server(port)
+      server = Server(port)
       server.bind('fn', fn)
       server.start(block=False)
       c.wait()
