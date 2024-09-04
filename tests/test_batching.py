@@ -12,11 +12,6 @@ BATCH_SERVERS = [
 ]
 
 
-# TODO test:
-# - test error types
-# - test done fn
-
-
 class TestBatching:
 
   @pytest.mark.parametrize('BatchServer', BATCH_SERVERS)
@@ -97,5 +92,21 @@ class TestBatching:
     results = [x.result() for x in futures]
     for result in results:
       assert zerofun.tree_equals(result, data)
+    client.close()
+    server.close()
+
+  def test_shape_mismatch(self):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port, errors=False)
+    server.bind('fn', lambda x: x, batch=2)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    future1 = client.fn({'a': np.array(12)})
+    future2 = client.fn(42)
+    with pytest.raises(RuntimeError):
+      future2.result()
+    future3 = client.fn({'a': np.array(42)})
+    assert future1.result() == {'a': np.array(12)}
+    assert future3.result() == {'a': np.array(42)}
     client.close()
     server.close()

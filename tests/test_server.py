@@ -70,6 +70,23 @@ class TestServer:
       assert client.sub(3, 5).result() == -2
 
   @pytest.mark.parametrize('Server', SERVERS)
+  def test_unknown_method(self, Server):
+    port = zerofun.free_port()
+    server = Server(port, errors=False)
+    server.bind('foo', lambda x: x)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port)
+    future = client.bar(42)
+    try:
+      future.result()
+      assert False
+    except RuntimeError as e:
+      assert e.args == ('Unknown method bar',)
+      assert True
+    client.close()
+    server.close()
+
+  @pytest.mark.parametrize('Server', SERVERS)
   def test_server_errors(self, Server):
     port = zerofun.free_port()
 
@@ -248,7 +265,6 @@ class TestServer:
       assert result.name == data.name
       assert result, data
       client.close()
-      data.close()
 
     port = zerofun.free_port()
     client = zerofun.Process(client, port, start=True)

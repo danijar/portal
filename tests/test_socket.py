@@ -9,7 +9,8 @@ class TestSocket:
   def test_basic(self):
     port = zerofun.free_port()
     server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port, connect=True)
+    client = zerofun.ClientSocket('localhost', port)
+    client.connect()
     assert client.connected
     client.send(b'foo')
     addr, data = server.recv()
@@ -23,7 +24,7 @@ class TestSocket:
   def test_multi_buffer(self):
     port = zerofun.free_port()
     server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port, connect=True)
+    client = zerofun.ClientSocket('localhost', port)
     client.send(b'foo', b'bar', b'baz')
     addr, data = server.recv()
     assert data == b'foobarbaz'
@@ -35,7 +36,7 @@ class TestSocket:
   def test_multiple_send(self):
     port = zerofun.free_port()
     server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port, connect=True)
+    client = zerofun.ClientSocket('localhost', port)
     client.send(b'foo')
     client.send(b'ba', b'r')
     client.send(b'baz')
@@ -74,18 +75,18 @@ class TestSocket:
     with pytest.raises(zerofun.Disconnected):
       client.send(b'bar')
 
-  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('repeat', range(5))
   def test_disconnect_client(self, repeat):
     port = zerofun.free_port()
     server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port, connect=True)
+    client = zerofun.ClientSocket('localhost', port)
     client.send(b'foo')
     assert server.recv()[1] == b'foo'
     assert len(server.connections) == 1
     client.close()
     time.sleep(0.2)
     assert len(server.connections) == 0
-    client = zerofun.ClientSocket('localhost', port, connect=True)
+    client = zerofun.ClientSocket('localhost', port)
     time.sleep(0.2)
     assert len(server.connections) == 1
     server.close()
@@ -110,7 +111,7 @@ class TestSocket:
     def client_fn(port, q):
       client = zerofun.ClientSocket(
           'localhost', port,
-          reconnect=False,
+          autoconn=False,
           keepalive_after=1,
           keepalive_every=1,
           keepalive_fails=1)

@@ -128,6 +128,14 @@ class Future:
     self.res = None
     self.err = None
 
+  def __repr__(self):
+    if not self.done:
+      return 'Future(done=False)'
+    elif self.err:
+      return f"Future(done=True, error='{self.err}', raised={self.raised[0]})"
+    else:
+      return 'Future(done=True)'
+
   def wait(self, timeout=None):
     if self.don:
       return self.don

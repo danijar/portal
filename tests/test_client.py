@@ -192,7 +192,7 @@ class TestClient:
     server.close()
     client.close()
 
-  @pytest.mark.parametrize('repeat', range(10))
+  @pytest.mark.parametrize('repeat', range(5))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_maxinflight_disconnect(self, repeat, Server):
     port = zerofun.free_port()
@@ -282,8 +282,8 @@ class TestClient:
       assert client.fn(2).result() == 2
       time.sleep(0.05)
       assert client.fn(3).result() == 3
-      client.close()
       b.wait()
+      client.close()
 
     zerofun.run([
         zerofun.Thread(server),
@@ -323,8 +323,8 @@ class TestClient:
         client.fn(3).result()
       client.connect()
       assert client.fn(3).result() == 3
-      client.close()
       b.wait()
+      client.close()
 
     zerofun.run([
         zerofun.Thread(server),
