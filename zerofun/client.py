@@ -88,6 +88,9 @@ class Client:
     return future
 
   def close(self, timeout=None):
+    for future in self.futures.values():
+      self._seterr(future, client_socket.Disconnected)
+    self.futures.clear()
     self.socket.close(timeout)
 
   def _numinflight(self):

@@ -106,9 +106,6 @@ class Server:
           self._error(addr, reqnum, 3, f'Unknown method {name}')
           break
         self.metrics['recv'] += 1
-
-        print('SERVER RECV', name, data)
-
         workfn, postfn, pool, active = self.methods[name]
         job = pool.submit(workfn, *data)
         job.active = active

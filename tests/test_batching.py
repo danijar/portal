@@ -1,4 +1,5 @@
 import functools
+import time
 
 import numpy as np
 import pytest
@@ -42,6 +43,21 @@ class TestBatching:
     futures = [x.fn(i) for i, x in enumerate(clients)]
     results = [x.result() for x in futures]
     assert (results == 2 * np.arange(8)).all()
+    [x.close() for x in clients]
+    server.close()
+
+  def test_multiple_workers(self):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port)
+    def fn(x):
+      assert x.shape == (4,)
+      return 2 * x
+    server.bind('fn', fn, workers=4, batch=4)
+    server.start(block=False)
+    clients = [zerofun.Client('localhost', port) for _ in range(32)]
+    futures = [x.fn(i) for i, x in enumerate(clients)]
+    results = [x.result() for x in futures]
+    assert (results == 2 * np.arange(32)).all()
     [x.close() for x in clients]
     server.close()
 
@@ -110,3 +126,57 @@ class TestBatching:
     assert future3.result() == {'a': np.array(42)}
     client.close()
     server.close()
+
+  @pytest.mark.parametrize('repeat', range(3))
+  def test_client_drops(self, repeat):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port)
+    server.bind('fn', lambda x: 2 * x, batch=4)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port, autoconn=False)
+    client.connect()
+    future1 = client.fn(1)
+    future2 = client.fn(2)
+    client.close()
+    client = zerofun.Client('localhost', port)
+    future3 = client.fn(3)
+    future4 = client.fn(4)
+    print('a')
+    with pytest.raises(zerofun.Disconnected):
+      future1.result()
+    print('b')
+    with pytest.raises(zerofun.Disconnected):
+      future2.result()
+    print('c')
+    assert future3.result() == 6
+    print('d')
+    assert future4.result() == 8
+    print('e')
+    client.close()
+    print('f')
+    server.close()
+
+  @pytest.mark.parametrize('repeat', range(3))
+  def test_server_drops(self, repeat):
+    port = zerofun.free_port()
+    server = zerofun.BatchServer(port)
+    server.bind('fn', lambda x: 2 * x, batch=2)
+    server.start(block=False)
+    client = zerofun.Client('localhost', port, autoconn=False)
+    client.connect()
+    future1 = client.fn(1)
+    server.close()
+
+    server = zerofun.BatchServer(port)
+    server.bind('fn', lambda x: 2 * x, batch=2)
+    server.start(block=False)
+
+    with pytest.raises(zerofun.Disconnected):
+      future1.result()
+    client.connect()
+    future2 = client.fn(2)
+    future3 = client.fn(3)
+    assert future2.result() == 4
+    assert future3.result() == 6
+    server.close()
+    client.close()
