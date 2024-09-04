@@ -125,7 +125,7 @@ class Client:
 
   def _conn(self):
     if self.socket.options.autoconn:
-      for future in self.futures.values():
+      for future in list(self.futures.values()):
         if getattr(future, 'resend', False):
           self.socket.send(*future.sendargs)
 

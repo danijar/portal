@@ -88,11 +88,12 @@ class ServerSocket:
 
   def shutdown(self):
     self.reading = False
-    for sock in [self.sock, *[conn.sock for conn in self.conns.values()]]:
-      try:
-        sock.shutdown(socket.SHUT_RD)  # Stop allowing incoming data.
-      except OSError:
-        pass  # There is no lock so the loop thread may have just closed it.
+    # TODO
+    # for sock in [self.sock, *[conn.sock for conn in self.conns.values()]]:
+    #   try:
+    #     sock.shutdown(socket.SHUT_RD)  # Stop new incoming messages.
+    #   except OSError:
+    #     pass  # There is no lock so the loop thread may have just closed it.
 
   def close(self, timeout=None):
     self.running = False

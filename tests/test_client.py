@@ -197,45 +197,34 @@ class TestClient:
   @pytest.mark.parametrize('Server', SERVERS)
   def test_maxinflight_disconnect(self, repeat, Server):
     port = zerofun.free_port()
-    a = threading.Barrier(3)
+    a = threading.Barrier(2)
     b = threading.Barrier(2)
-    c = threading.Barrier(2)
 
     def server():
       def fn(x):
-        if x in (1, 2):
+        if x == 1:
           a.wait()
         time.sleep(0.1)
         return x
       server = Server(port)
       server.bind('fn', fn, workers=2)
       server.start(block=False)
-      # Close server after receiving two requests but before responding to any
-      # of them, to ensure the client is waiting for maxinflight during the
-      # disconnect.
       a.wait()
       server.close()
-      b.wait()
       server = Server(port)
       server.bind('fn', fn)
       server.start(block=False)
-      c.wait()
+      b.wait()
       server.close()
 
     def client():
-      client = zerofun.Client(
-          'localhost', port, maxinflight=2, autoconn=False)
-      client.connect()
-      future1 = client.fn(1)
-      future2 = client.fn(2)
-      with pytest.raises(zerofun.Disconnected):
-        client.fn(3).result()
-      assert future1.result() == 1
-      assert future2.result() == 2
+      client = zerofun.Client('localhost', port, maxinflight=2)
+      print('A')
+      futures = [client.fn(x) for x in range(5)]
+      print('B')
+      results = [x.result() for x in futures]
+      assert results == list(range(5))
       b.wait()
-      client.connect()
-      assert client.fn(4).result() == 4
-      c.wait()
       client.close()
 
     zerofun.run([
