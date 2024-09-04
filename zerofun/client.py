@@ -12,13 +12,13 @@ from . import packlib
 class Client:
 
   def __init__(
-      self, host, port, name='Client', maxinflight=16, connect=True, **kwargs):
+      self, host, port, name='Client', maxinflight=16, **kwargs):
     assert 1 <= maxinflight, maxinflight
     self.socket = client_socket.ClientSocket(
-        host, port, f'{name}Socket', connect=False, **kwargs)
+        host, port, f'{name}Socket', start=False, **kwargs)
     self.socket.callbacks_recv.append(self._recv)
     self.socket.callbacks_disc.append(self._disc)
-    connect and self.socket.connect()
+    self.socket.start()
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
     self.futures = {}
@@ -65,7 +65,7 @@ class Client:
     while self._numinflight() >= self.maxinflight:
       with self.cond: self.cond.wait(timeout=0.2)
       try:
-        self.socket._require_connection(timeout=0)
+        self.socket.require_connection(timeout=0)
       except TimeoutError:
         pass
     with self.lock:
@@ -106,9 +106,10 @@ class Client:
     self.socket.recv()
 
   def _disc(self):
-    for future in self.futures.values():
-      if not future.done():
-        self._seterr(future, client_socket.Disconnected)
+    if not self.socket.options.autoconn:
+      for future in self.futures.values():
+        if not future.done():
+          self._seterr(future, client_socket.Disconnected)
 
   def _seterr(self, future, e):
     raised = [False]
@@ -130,8 +131,7 @@ class Future:
   def wait(self, timeout=None):
     if self.don:
       return self.don
-    with self.con:
-      return self.con.wait(timeout)
+    with self.con: return self.con.wait(timeout)
 
   def done(self):
     return self.don
@@ -149,12 +149,10 @@ class Future:
     assert not self.don
     self.don = True
     self.res = result
-    with self.con:
-      self.con.notify_all()
+    with self.con: self.con.notify_all()
 
   def set_error(self, e):
     assert not self.don
     self.don = True
     self.err = e
-    with self.con:
-      self.con.notify_all()
+    with self.con: self.con.notify_all()

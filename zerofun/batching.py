@@ -121,9 +121,6 @@ def batcher(
     for buffer, leaf in zip(buffers, leaves):
       buffer[index] = leaf
     if len(addrs) == batch_size:
-      # TODO: Keep track of the shared memory buffers until the inner
-      # server has responded and then close them. Later, we can also add
-      # them to a free list to reuse them.
       del batches[name]
       data = packlib.tree_unflatten(buffers, reference)
       job = inner.call(name, *data)

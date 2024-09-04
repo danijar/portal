@@ -5,6 +5,12 @@ import pytest
 import zerofun
 
 
+SERVERS = [
+    zerofun.Server,
+    zerofun.BatchServer,
+]
+
+
 class TestClient:
 
   def test_none_result(self):
@@ -21,9 +27,7 @@ class TestClient:
 
   def test_manual_connect(self):
     port = zerofun.free_port()
-    client = zerofun.Client('localhost', port, connect=False, reconnect=False)
-    result = client.connect(timeout=0.01)
-    assert result is False
+    client = zerofun.Client('localhost', port, autoconn=False)
     assert not client.connected
     server = zerofun.Server(port)
     server.bind('fn', lambda x: x)
@@ -39,7 +43,8 @@ class TestClient:
     server = zerofun.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = zerofun.Client('localhost', port, reconnect=False)
+    client = zerofun.Client('localhost', port, autoconn=False)
+    client.connect()
     assert client.fn(1).result() == 1
     server.close()
     with pytest.raises(zerofun.Disconnected):
@@ -129,63 +134,6 @@ class TestClient:
     client.close()
     server.close()
 
-  @pytest.mark.parametrize('repeat', range(10))
-  @pytest.mark.parametrize('Server', [zerofun.Server, zerofun.BatchServer])
-  def test_maxinflight_disconnect(self, repeat, Server):
-    port = zerofun.free_port()
-    a = threading.Barrier(3)
-    b = threading.Barrier(2)
-    c = threading.Barrier(2)
-
-    def server():
-      def fn(x):
-        if x in (1, 2):
-          a.wait()
-        time.sleep(0.1)
-        return x
-      server = Server(port)
-      server.bind('fn', fn, workers=2)
-      server.start(block=False)
-      # Close server after receiving two requests but before responding to any
-      # of them, to ensure the client is waiting for maxinflight during the
-      # disconnect.
-      a.wait()
-      server.close()
-      b.wait()
-      server = Server(port)
-      server.bind('fn', fn)
-      server.start(block=False)
-      c.wait()
-      server.close()
-
-    def client():
-      client = zerofun.Client(
-          'localhost', port, maxinflight=2, reconnect=False)
-      start = time.time()
-      future1 = client.fn(1)
-      time.sleep(0.1)
-      future2 = client.fn(2)
-      assert time.time() - start < 0.2
-      try:
-        client.fn(3)
-        client.fn(3)
-        client.fn(3)
-        assert False
-      except zerofun.Disconnected:
-        assert True
-      assert future1.result() == 1
-      assert future2.result() == 2
-      b.wait()
-      client.connect()
-      assert client.fn(4).result() == 4
-      c.wait()
-      client.close()
-
-    zerofun.run([
-      zerofun.Thread(server),
-      zerofun.Thread(client),
-    ])
-
   @pytest.mark.parametrize('repeat', range(5))
   def test_future_cleanup(self, repeat):
     port = zerofun.free_port()
@@ -243,3 +191,142 @@ class TestClient:
     zerofun.run([zerofun.Thread(user) for _ in range(users)])
     server.close()
     client.close()
+
+  @pytest.mark.parametrize('repeat', range(10))
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_maxinflight_disconnect(self, repeat, Server):
+    port = zerofun.free_port()
+    a = threading.Barrier(3)
+    b = threading.Barrier(2)
+    c = threading.Barrier(2)
+
+    def server():
+      def fn(x):
+        if x in (1, 2):
+          a.wait()
+        time.sleep(0.1)
+        return x
+      server = Server(port)
+      server.bind('fn', fn, workers=2)
+      server.start(block=False)
+      # Close server after receiving two requests but before responding to any
+      # of them, to ensure the client is waiting for maxinflight during the
+      # disconnect.
+      a.wait()
+      server.close()
+      b.wait()
+      server = Server(port)
+      server.bind('fn', fn)
+      server.start(block=False)
+      c.wait()
+      server.close()
+
+    def client():
+      client = zerofun.Client(
+          'localhost', port, maxinflight=2, autoconn=False)
+      client.connect()
+      start = time.time()
+      future1 = client.fn(1)
+      time.sleep(0.1)
+      future2 = client.fn(2)
+      assert time.time() - start < 0.2
+      try:
+        client.fn(3)
+        client.fn(3)
+        client.fn(3)
+        assert False
+      except zerofun.Disconnected:
+        assert True
+      assert future1.result() == 1
+      assert future2.result() == 2
+      b.wait()
+      client.connect()
+      assert client.fn(4).result() == 4
+      c.wait()
+      client.close()
+
+    zerofun.run([
+      zerofun.Thread(server),
+      zerofun.Thread(client),
+    ])
+
+  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_server_drops_autoconn(self, repeat, Server):
+    port = zerofun.free_port()
+    a = threading.Barrier(2)
+    b = threading.Barrier(2)
+
+    def server():
+      server = Server(port)
+      server.bind('fn', lambda x: x)
+      server.start(block=False)
+      a.wait()
+      time.sleep(0.1)
+      server.close()
+      stats = server.stats()
+      assert stats['numrecv'] < 3
+      assert stats['numsend'] == stats['numrecv']
+      server = Server(port)
+      server.bind('fn', lambda x: x)
+      server.start(block=False)
+      b.wait()
+      server.close()
+
+    def client():
+      client = zerofun.Client(
+          'localhost', port, maxinflight=1, autoconn=True)
+      assert client.fn(1).result() == 1
+      a.wait()
+      time.sleep(0.05)
+      assert client.fn(2).result() == 2
+      time.sleep(0.05)
+      assert client.fn(3).result() == 3
+      client.close()
+      b.wait()
+
+    zerofun.run([
+        zerofun.Thread(server),
+        zerofun.Thread(client),
+    ])
+
+  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_server_drops_manual(self, repeat, Server):
+    port = zerofun.free_port()
+    a = threading.Barrier(2)
+    b = threading.Barrier(2)
+
+    def server():
+      server = Server(port)
+      server.bind('fn', lambda x: x)
+      server.start(block=False)
+      a.wait()
+      server.close()
+      stats = server.stats()
+      assert stats['numrecv'] == 1
+      assert stats['numsend'] == stats['numrecv']
+      server = Server(port)
+      server.bind('fn', lambda x: x)
+      server.start(block=False)
+      b.wait()
+      server.close()
+
+    def client():
+      client = zerofun.Client(
+          'localhost', port, maxinflight=1, autoconn=False)
+      client.connect()
+      assert client.fn(1).result() == 1
+      a.wait()
+      time.sleep(0.1)
+      with pytest.raises(zerofun.Disconnected):
+        client.fn(3).result()
+      client.connect()
+      assert client.fn(3).result() == 3
+      client.close()
+      b.wait()
+
+    zerofun.run([
+        zerofun.Thread(server),
+        zerofun.Thread(client),
+    ])

@@ -14,7 +14,11 @@ class SharedArray:
       size = math.prod(shape) * np.dtype(dtype).itemsize
       self.shm = shared_memory.SharedMemory(create=True, size=size)
     self.arr = np.ndarray(shape, dtype, self.shm.buf)
-    weakref.finalize(self.arr, self.shm.close)
+    # This unlinks the shared memory buffer, but it will survive until the last
+    # process closes up their file pointer. This could cause a problem if a
+    # SharedArray is serialize and the Python object goes out of scope before
+    # trying to deserialize it (in the same or a different process).
+    weakref.finalize(self.arr, self.close)
 
   @property
   def name(self):
@@ -25,7 +29,6 @@ class SharedArray:
     return self.arr
 
   def result(self):
-    weakref.finalize(self.arr, self.close)
     return self.arr
 
   def close(self):

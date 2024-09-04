@@ -13,9 +13,6 @@ BATCH_SERVERS = [
 
 
 # TODO test:
-# - multiple workers
-# - some client drops and comes back up
-# - server drops and comes back up
 # - test error types
 # - test done fn
 

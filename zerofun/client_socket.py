@@ -21,7 +21,7 @@ class Disconnected(Exception):
 class Options:
 
   ipv6: bool = False
-  reconnect: bool = True
+  autoconn: bool = True
   resend: bool = False
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 128
@@ -34,7 +34,7 @@ class Options:
 
 class ClientSocket:
 
-  def __init__(self, host, port=None, name='Client', connect=True, **kwargs):
+  def __init__(self, host, port=None, name='Client', start=True, **kwargs):
     assert (port or ':' in host) and '://' not in host, host
     if port is None:
       host, port = host.rsplit(':', 1)
@@ -53,22 +53,26 @@ class ClientSocket:
     self.recvq = queue.Queue()
 
     self.running = True
-    self.thread = thread.Thread(self._loop, name=f'{name}Loop', start=True)
-    connect and self.connect()
+    self.thread = thread.Thread(self._loop, name=f'{name}Loop')
+    start and self.thread.start()
+
+  def start(self):
+    self.thread.start()
 
   @property
   def connected(self):
     return self.isconn.is_set()
 
   def connect(self, timeout=None):
-    self.wantconn.set()
+    if not self.options.autoconn:
+      self.wantconn.set()
     return self.isconn.wait(timeout)
 
   def send(self, *data, timeout=None):
     assert self.running
     if len(self.sendq) > self.options.max_send_queue:
       raise RuntimeError('Too many outgoing messages enqueued')
-    self._require_connection(timeout)
+    self.require_connection(timeout)
     maxsize = self.options.max_msg_size
     self.sendq.append(buffers.SendBuffer(*data, maxsize=maxsize))
 
@@ -83,7 +87,7 @@ class ClientSocket:
           return self.recvq.get(timeout=min(timeout, 0.2) if timeout else 0.2)
         except queue.Empty:
           timeout = timeout and max(0, timeout - (time.time() - start))
-          self._require_connection(timeout)
+          self.require_connection(timeout)
           if timeout == 0:
             raise
     except queue.Empty:
@@ -94,12 +98,12 @@ class ClientSocket:
     self.thread.join(timeout)
     self.thread.kill()
 
-  def _require_connection(self, timeout):
+  def require_connection(self, timeout):
     if self.connected:
       return
-    if not self.options.reconnect:
+    if not self.options.autoconn:
       raise Disconnected
-    if timeout == 0 or not self.connect(timeout):
+    if timeout == 0 or not self.isconn.wait(timeout):
       raise TimeoutError
 
   def _loop(self):
@@ -110,14 +114,15 @@ class ClientSocket:
     while self.running or (self.sendq and self.isconn.is_set()):
 
       if not self.isconn.is_set():
-        if not self.wantconn.wait(timeout=0.2):
+        if not self.options.autoconn and not self.wantconn.wait(timeout=0.2):
           continue
         sock = self._connect()
-        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         if not sock:
           break
+        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         self.isconn.set()
-        self.wantconn.clear()
+        if not self.options.autoconn:
+          self.wantconn.clear()
         [x() for x in self.callbacks_conn]
 
       try:
@@ -159,7 +164,8 @@ class ClientSocket:
         [x() for x in self.callbacks_disc]
         continue
 
-    sock.close()
+    if sock:
+      sock.close()
 
   def _connect(self):
     host, port = self.addr

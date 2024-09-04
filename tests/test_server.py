@@ -265,7 +265,7 @@ class TestServer:
     def fn(x):
       if x == 1:
         barrier.wait()
-        time.sleep(0.5)
+        time.sleep(0.2)
       return x
 
     port = zerofun.free_port()

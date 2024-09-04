@@ -57,8 +57,8 @@ class TestSocket:
   def test_disconnect_server(self, repeat):
     port = zerofun.free_port()
     server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket(
-        'localhost', port, connect=True, reconnect=False)
+    client = zerofun.ClientSocket('localhost', port, autoconn=False)
+    client.connect()
     server.close()
     with pytest.raises(zerofun.Disconnected):
       client.recv()
@@ -110,10 +110,11 @@ class TestSocket:
     def client_fn(port, q):
       client = zerofun.ClientSocket(
           'localhost', port,
-          connect=True, reconnect=False,
+          reconnect=False,
           keepalive_after=1,
           keepalive_every=1,
           keepalive_fails=1)
+      client.connect()
       try:
         assert client.connected
         while True:
