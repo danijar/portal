@@ -1,4 +1,4 @@
-name: zerofun
+name: portal
 on:
   push: { branches: [main] }
   pull_request: { branches: [main] }
@@ -25,4 +25,4 @@ jobs:
         python -m pytest tests
     - name: Package installation
       run: |
-        python -m pip install zerofun
+        python -m pip install portal
