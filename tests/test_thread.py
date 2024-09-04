@@ -1,3 +1,4 @@
+import threading
 import time
 
 import pytest
@@ -52,23 +53,25 @@ class TestThread:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subthread(self, repeat):
-    flag = [False]
+    barrier = threading.Barrier(2)
+    child = [None]
     def outer():
-      zerofun.Thread(inner, start=True)
+      child[0] = zerofun.Thread(inner)
+      child[0].start()
       while True:
         time.sleep(0.1)
     def inner():
-      try:
-        while True:
-          time.sleep(0.1)
-      except SystemExit:
-        flag[0] = True
-        raise
+      barrier.wait()
+      while True:
+        time.sleep(0.1)
     worker = zerofun.Thread(outer, start=True)
+    barrier.wait()
     worker.kill()
+    time.sleep(0.1)
     assert not worker.running
+    assert not child[0].running
     assert worker.exitcode == 2
-    assert flag[0] is True
+    assert child[0].exitcode == 2
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):

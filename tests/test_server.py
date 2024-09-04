@@ -68,6 +68,7 @@ class TestServer:
       client = zerofun.Client('localhost', port)
       assert client.add(3, 5).result() == 8
       assert client.sub(3, 5).result() == -2
+      client.close()
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_unknown_method(self, Server):
