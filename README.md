@@ -4,6 +4,15 @@
 
 Remote function calls for array data using [ZMQ](https://zeromq.org/).
 
+**NOTE: Zerofun has been rewritten without ZMQ using raw Python sockets and is
+now called [Portal][portal]. You can keep using Zerofun but it will receive no
+further updates. To suppress the message, install `zerofun==2.3.1`. To upgrade,
+run `pip install portal` and visit [github.com/danijar/portal][portal]. The API
+is nearly the same but allows for more flexible function arguments and offers
+higher performance and reliability.**
+
+[portal]: https://github.com/danijar/portal
+
 ## Overview
 
 Zerofun provides a `Server` that you can bind functions to and a `Client` that
