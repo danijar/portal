@@ -40,7 +40,7 @@ class ClientSocket:
       port = int(port)
     self.addr = (host, port)
     self.name = name
-    self.options = Options(**kwargs)
+    self.options = Options(**{**contextlib.context.clientkw, **kwargs})
 
     self.callbacks_recv = []
     self.callbacks_conn = []
@@ -63,6 +63,7 @@ class ClientSocket:
     return self.isconn.is_set()
 
   def connect(self, timeout=None):
+    assert not self.connected
     if not self.options.autoconn:
       self.wantconn.set()
     return self.isconn.wait(timeout)
@@ -183,8 +184,9 @@ class ClientSocket:
         sock.settimeout(0)
         self._log('Connection established')
         return sock
-      except ConnectionError:
-        pass
+      except ConnectionError as e:
+        self._log(f'Connection error ({e})')
+        time.sleep(0.1)
       except TimeoutError:
         pass
       if once:

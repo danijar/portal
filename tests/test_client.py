@@ -219,9 +219,7 @@ class TestClient:
 
     def client():
       client = zerofun.Client('localhost', port, maxinflight=2)
-      print('A')
       futures = [client.fn(x) for x in range(5)]
-      print('B')
       results = [x.result() for x in futures]
       assert results == list(range(5))
       b.wait()

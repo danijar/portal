@@ -132,27 +132,21 @@ class TestBatching:
     server = zerofun.BatchServer(port)
     server.bind('fn', lambda x: 2 * x, batch=4)
     server.start(block=False)
-    client = zerofun.Client('localhost', port, autoconn=False)
+    client = zerofun.Client('localhost', port, name='Client1', autoconn=False)
     client.connect()
     future1 = client.fn(1)
     future2 = client.fn(2)
     client.close()
-    client = zerofun.Client('localhost', port)
+    client = zerofun.Client('localhost', port, name='Client2')
     future3 = client.fn(3)
     future4 = client.fn(4)
-    print('a')
     with pytest.raises(zerofun.Disconnected):
       future1.result()
-    print('b')
     with pytest.raises(zerofun.Disconnected):
       future2.result()
-    print('c')
     assert future3.result() == 6
-    print('d')
     assert future4.result() == 8
-    print('e')
     client.close()
-    print('f')
     server.close()
 
   @pytest.mark.parametrize('repeat', range(3))

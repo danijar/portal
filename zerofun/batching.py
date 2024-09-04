@@ -75,7 +75,7 @@ def batcher(
     if not running.is_set():  # Do not accept further requests.
       return
     try:
-      addr, data = outer.recv(timeout=0.001)
+      addr, data = outer.recv(timeout=0.0001)
     except TimeoutError:
       return
     reqnum = bytes(data[:8])
@@ -159,13 +159,18 @@ def batcher(
     if errors:
       raise RuntimeError(message)
 
-  outer = server_socket.ServerSocket(outer_port, name, **kwargs)
-  inner = client.Client('localhost', inner_port, name, **kwargs)
+  outer = server_socket.ServerSocket(outer_port, f'{name}Server', **kwargs)
+  inner = client.Client('localhost', inner_port, f'{name}Client', **kwargs)
   batches = {}  # {method: ([addr], [reqnum], structure, [array])}
   jobs = []
+  shutdown = False
   try:
     while running.is_set() or jobs:
-      maybe_recv(outer, inner, jobs, batches)
+      if running.is_set():
+        maybe_recv(outer, inner, jobs, batches)
+      elif not shutdown:
+        shutdown = True
+        outer.shutdown()
       jobs = maybe_send(outer, inner, jobs)
   finally:
     outer.close()

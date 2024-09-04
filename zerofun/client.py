@@ -26,7 +26,7 @@ class Client:
     # Socket is created after the above attributes because the callbacks access
     # some of the attributes.
     self.socket = client_socket.ClientSocket(
-        host, port, f'{name}Socket', start=False, **kwargs)
+        host, port, name, start=False, **kwargs)
     self.socket.callbacks_recv.append(self._recv)
     self.socket.callbacks_disc.append(self._disc)
     self.socket.callbacks_conn.append(self._conn)

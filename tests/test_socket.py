@@ -100,13 +100,10 @@ class TestSocket:
     def server_fn(port, q):
       # Receive exactly one message and then exit wihout close().
       server = zerofun.ServerSocket(port)
-      print('server start')
       x = bytes(server.recv()[1])
-      print('received', x)
       q.put(x)
       q.close()
       q.join_thread()
-      print('server done')
 
     def client_fn(port, q):
       client = zerofun.ClientSocket(
@@ -131,21 +128,13 @@ class TestSocket:
 
     server = zerofun.Process(server_fn, port, q, start=True)
     client = zerofun.Process(client_fn, port, q, start=True)
-    print('a')
     assert q.get() == b'method'
-    print('b')
     server.join()
-    print('c')
     assert q.get() == b'bye'
-    print('d')
     server = zerofun.Process(server_fn, port, q, start=True)
-    print('e')
     server.join()
-    print('f')
     client.join()
-    print('g')
     assert q.get() == b'hi'
-    print('h')
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_twoway(self, repeat, size=1024 ** 2, prefetch=8):

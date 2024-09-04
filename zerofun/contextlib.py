@@ -2,9 +2,7 @@ import collections
 import multiprocessing as mp
 import os
 import pathlib
-import sys
 import threading
-import time
 import traceback
 
 import cloudpickle
@@ -16,11 +14,12 @@ from . import utils
 class Context:
 
   def __init__(self):
-    self.hostname = ''
     self.initfns = []
     self.resolver = None
     self.errfile = None
     self.interval = 20
+    self.clientkw = {}
+    self.serverkw = {}
     self.done = threading.Event()
     self.watcher = None
     self.children = collections.defaultdict(list)
@@ -29,25 +28,25 @@ class Context:
 
   def options(self):
     return {
-        'hostname': self.hostname,
         'resolver': self.resolver and cloudpickle.dumps(self.resolver),
         'errfile': self.errfile,
         'interval': self.interval,
         'initfns': self.initfns,
+        'clientkw': self.clientkw,
+        'serverkw': self.serverkw,
     }
 
   def setup(
       self,
-      hostname=None,
       resolver=None,
       errfile=None,
       interval=None,
       initfns=None,
+      clientkw=None,
+      serverkw=None,
+      hostname=None,
+      ipv6=None,
   ):
-
-    if hostname is not None:
-      assert isinstance(hostname, str)
-      self.hostname = hostname
 
     if resolver:
       if isinstance(resolver, bytes):
@@ -66,8 +65,24 @@ class Context:
       self.interval = interval
 
     if initfns:
+      self.initfns = []
       for fn in initfns:
         self.initfn(fn, call_now=True)
+
+    if clientkw is not None:
+      assert isinstance(clientkw, dict)
+      self.clientkw = clientkw
+
+    if serverkw is not None:
+      assert isinstance(serverkw, dict)
+      self.serverkw = serverkw
+
+    if hostname is not None:
+      self.serverkw['hostname'] = hostname
+
+    if ipv6 is not None:
+      self.clientkw['ipv6'] = ipv6
+      self.serverkw['ipv6'] = ipv6
 
     if self.errfile and not self.watcher:
       self.watcher = threading.Thread(target=self._watcher, daemon=True)

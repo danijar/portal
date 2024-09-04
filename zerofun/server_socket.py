@@ -26,6 +26,7 @@ class Connection:
 class Options:
 
   ipv6: bool = False
+  hostname: str = ''
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 4096
   max_send_queue: int = 4096
@@ -38,14 +39,13 @@ class ServerSocket:
     if isinstance(port, str):
       port = int(port.rsplit(':', 1)[1])
     self.name = name
-    self.options = Options(**kwargs)
-    hostname = contextlib.context.hostname
+    self.options = Options(**{**contextlib.context.serverkw, **kwargs})
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-      self.addr = (hostname, port, 0, 0)
+      self.addr = (self.options.hostname, port, 0, 0)
     else:
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      self.addr = (hostname, port)
+      self.addr = (self.options.hostname, port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self.sock.bind(self.addr)
     self.sock.setblocking(False)
@@ -88,12 +88,6 @@ class ServerSocket:
 
   def shutdown(self):
     self.reading = False
-    # TODO
-    # for sock in [self.sock, *[conn.sock for conn in self.conns.values()]]:
-    #   try:
-    #     sock.shutdown(socket.SHUT_RD)  # Stop new incoming messages.
-    #   except OSError:
-    #     pass  # There is no lock so the loop thread may have just closed it.
 
   def close(self, timeout=None):
     self.running = False

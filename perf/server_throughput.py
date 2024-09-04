@@ -8,7 +8,7 @@ def main():
 
   size = 1024 ** 3 // 4
   prefetch = 8
-  twoway = True  # False
+  twoway = False
 
   def server(port):
     server = zerofun.Server(port)
@@ -42,7 +42,7 @@ def main():
       avgdur = sum(durations) / len(durations)
       mbps = size / avgdur / (1024 ** 2)
       mbps *= 2 if twoway else 1
-      print(mbps)  # 4000 oneway, 3000 twoway
+      print(mbps)  # 3700 oneway, 3000 twoway
 
   zerofun.setup(hostname='localhost')
   port = zerofun.free_port()

@@ -12,7 +12,7 @@ from . import thread
 class Server:
 
   def __init__(self, port, name='Server', workers=1, errors=True, **kwargs):
-    self.socket = server_socket.ServerSocket(port, f'{name}Socket', **kwargs)
+    self.socket = server_socket.ServerSocket(port, name, **kwargs)
     self.loop = thread.Thread(self._loop, name=f'{name}Loop')
     self.methods = {}
     self.jobs = set()
