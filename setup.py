@@ -17,15 +17,15 @@ def parse_version(filename):
 
 
 setuptools.setup(
-    name='zerofun',
-    version=parse_version('zerofun/__init__.py'),
+    name='portal',
+    version=parse_version('portal/__init__.py'),
     author='Danijar Hafner',
     author_email='mail@danijar.com',
-    description='Remote function calls for array data using ZMQ',
-    url='http://github.com/danijar/zerofun',
+    description='Fast and reliable distributed systems in Python',
+    url='http://github.com/danijar/portal',
     long_description=pathlib.Path('README.md').read_text(),
     long_description_content_type='text/markdown',
-    packages=['zerofun'],
+    packages=['portal'],
     include_package_data=True,
     install_requires=parse_requirements('requirements.txt'),
     classifiers=[

@@ -1,7 +1,7 @@
 import collections
 import time
 
-import zerofun
+import portal
 
 
 def main():
@@ -13,7 +13,7 @@ def main():
   assert size % parts == 0
 
   def server(port):
-    server = zerofun.ServerSocket(port)
+    server = portal.ServerSocket(port)
     while True:
       addr, data = server.recv()
       if twoway:
@@ -24,7 +24,7 @@ def main():
 
   def client(port):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = zerofun.ClientSocket('localhost', port)
+    client = portal.ClientSocket('localhost', port)
     for _ in range(prefetch):
       client.send(*data)
     durations = collections.deque(maxlen=50)
@@ -44,11 +44,11 @@ def main():
       mbps *= 2 if twoway else 1
       print(mbps)  # 3500 oneway, 2500 twoway
 
-  zerofun.setup(hostname='localhost')
-  port = zerofun.free_port()
-  zerofun.run([
-      zerofun.Process(server, port),
-      zerofun.Process(client, port),
+  portal.setup(hostname='localhost')
+  port = portal.free_port()
+  portal.run([
+      portal.Process(server, port),
+      portal.Process(client, port),
   ])
 
 

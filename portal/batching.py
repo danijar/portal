@@ -1,7 +1,7 @@
 import threading
 
 import numpy as np
-import zerofun
+import portal
 
 from . import client
 from . import packlib
@@ -22,7 +22,7 @@ class BatchServer:
     self.name = name
     self.server = server.Server(inner_port, name, workers, errors, **kwargs)
     if process:
-      self.running = zerofun.context.mp.Event()
+      self.running = portal.context.mp.Event()
     else:
       self.running = threading.Event()
     self.process = process

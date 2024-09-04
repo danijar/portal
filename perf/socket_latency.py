@@ -1,7 +1,7 @@
 import collections
 import time
 
-import zerofun
+import portal
 
 
 def main():
@@ -10,7 +10,7 @@ def main():
   parts = 32
 
   def server(port):
-    server = zerofun.ServerSocket(port)
+    server = portal.ServerSocket(port)
     while True:
       addr, data = server.recv()
       server.send(addr, b'ok')
@@ -18,7 +18,7 @@ def main():
 
   def client(port):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = zerofun.ClientSocket('localhost', port)
+    client = portal.ClientSocket('localhost', port)
     durations = collections.deque(maxlen=10)
     while True:
       start = time.perf_counter()
@@ -29,11 +29,11 @@ def main():
       ping = sum(durations) / len(durations)
       print(1000 * ping)  # <1ms
 
-  zerofun.setup(hostname='localhost')
-  port = zerofun.free_port()
-  zerofun.run([
-      zerofun.Process(server, port),
-      zerofun.Process(client, port),
+  portal.setup(hostname='localhost')
+  port = portal.free_port()
+  portal.run([
+      portal.Process(server, port),
+      portal.Process(client, port),
   ])
 
 

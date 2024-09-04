@@ -1,15 +1,15 @@
 import time
 
 import pytest
-import zerofun
+import portal
 
 
 class TestSocket:
 
   def test_basic(self):
-    port = zerofun.free_port()
-    server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port)
+    port = portal.free_port()
+    server = portal.ServerSocket(port)
+    client = portal.ClientSocket('localhost', port)
     client.connect()
     assert client.connected
     client.send(b'foo')
@@ -22,9 +22,9 @@ class TestSocket:
     client.close()
 
   def test_multi_buffer(self):
-    port = zerofun.free_port()
-    server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port)
+    port = portal.free_port()
+    server = portal.ServerSocket(port)
+    client = portal.ClientSocket('localhost', port)
     client.send(b'foo', b'bar', b'baz')
     addr, data = server.recv()
     assert data == b'foobarbaz'
@@ -34,9 +34,9 @@ class TestSocket:
     client.close()
 
   def test_multiple_send(self):
-    port = zerofun.free_port()
-    server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port)
+    port = portal.free_port()
+    server = portal.ServerSocket(port)
+    client = portal.ClientSocket('localhost', port)
     client.send(b'foo')
     client.send(b'ba', b'r')
     client.send(b'baz')
@@ -56,15 +56,15 @@ class TestSocket:
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_disconnect_server(self, repeat):
-    port = zerofun.free_port()
-    server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port, autoconn=False)
+    port = portal.free_port()
+    server = portal.ServerSocket(port)
+    client = portal.ClientSocket('localhost', port, autoconn=False)
     client.connect()
     server.close()
-    with pytest.raises(zerofun.Disconnected):
+    with pytest.raises(portal.Disconnected):
       client.recv()
-    server = zerofun.ServerSocket(port)
-    with pytest.raises(zerofun.Disconnected):
+    server = portal.ServerSocket(port)
+    with pytest.raises(portal.Disconnected):
       client.recv()
     client.connect()
     time.sleep(0.2)
@@ -72,21 +72,21 @@ class TestSocket:
     assert client.recv() == b'foo'
     server.close()
     time.sleep(0.2)
-    with pytest.raises(zerofun.Disconnected):
+    with pytest.raises(portal.Disconnected):
       client.send(b'bar')
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_disconnect_client(self, repeat):
-    port = zerofun.free_port()
-    server = zerofun.ServerSocket(port)
-    client = zerofun.ClientSocket('localhost', port)
+    port = portal.free_port()
+    server = portal.ServerSocket(port)
+    client = portal.ClientSocket('localhost', port)
     client.send(b'foo')
     assert server.recv()[1] == b'foo'
     assert len(server.connections) == 1
     client.close()
     time.sleep(0.2)
     assert len(server.connections) == 0
-    client = zerofun.ClientSocket('localhost', port)
+    client = portal.ClientSocket('localhost', port)
     time.sleep(0.2)
     assert len(server.connections) == 1
     server.close()
@@ -94,19 +94,19 @@ class TestSocket:
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_server_dies(self, repeat):
-    port = zerofun.free_port()
-    q = zerofun.context.mp.Queue()
+    port = portal.free_port()
+    q = portal.context.mp.Queue()
 
     def server_fn(port, q):
       # Receive exactly one message and then exit wihout close().
-      server = zerofun.ServerSocket(port)
+      server = portal.ServerSocket(port)
       x = bytes(server.recv()[1])
       q.put(x)
       q.close()
       q.join_thread()
 
     def client_fn(port, q):
-      client = zerofun.ClientSocket(
+      client = portal.ClientSocket(
           'localhost', port,
           autoconn=False,
           keepalive_after=1,
@@ -118,7 +118,7 @@ class TestSocket:
         while True:
           client.send(b'method')
           time.sleep(0.1)
-      except zerofun.Disconnected:
+      except portal.Disconnected:
         q.put(b'bye')
         client.connect(timeout=None)
         client.send(b'hi')
@@ -126,12 +126,12 @@ class TestSocket:
       q.join_thread()
       client.close()
 
-    server = zerofun.Process(server_fn, port, q, start=True)
-    client = zerofun.Process(client_fn, port, q, start=True)
+    server = portal.Process(server_fn, port, q, start=True)
+    client = portal.Process(client_fn, port, q, start=True)
     assert q.get() == b'method'
     server.join()
     assert q.get() == b'bye'
-    server = zerofun.Process(server_fn, port, q, start=True)
+    server = portal.Process(server_fn, port, q, start=True)
     server.join()
     client.join()
     assert q.get() == b'hi'
@@ -140,7 +140,7 @@ class TestSocket:
   def test_twoway(self, repeat, size=1024 ** 2, prefetch=8):
 
     def server(port):
-      server = zerofun.ServerSocket(port)
+      server = portal.ServerSocket(port)
       expected = bytearray(size)
       while True:
         addr, data = server.recv()
@@ -154,7 +154,7 @@ class TestSocket:
 
     def client(port):
       data = bytearray(size)
-      client = zerofun.ClientSocket('localhost', port)
+      client = portal.ClientSocket('localhost', port)
       for _ in range(prefetch):
         client.send(data)
       for _ in range(100):
@@ -166,17 +166,17 @@ class TestSocket:
         pass
       client.close()
 
-    port = zerofun.free_port()
-    zerofun.run([
-        zerofun.Process(server, port),
-        zerofun.Process(client, port),
+    port = portal.free_port()
+    portal.run([
+        portal.Process(server, port),
+        portal.Process(client, port),
     ])
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_shutdown(self, repeat):
 
    def server(port):
-     server = zerofun.ServerSocket(port)
+     server = portal.ServerSocket(port)
      addr, data = server.recv()
      assert data == b'foo'
      large_result = bytes(1024 ** 2)
@@ -184,13 +184,13 @@ class TestSocket:
      server.close()
 
    def client(port):
-     client = zerofun.ClientSocket('localhost', port)
+     client = portal.ClientSocket('localhost', port)
      client.send(b'foo')
      assert client.recv() == bytes(1024 ** 2)
      client.close()
 
-   port = zerofun.free_port()
-   zerofun.run([
-       zerofun.Process(server, port),
-       zerofun.Process(client, port),
+   port = portal.free_port()
+   portal.run([
+       portal.Process(server, port),
+       portal.Process(client, port),
    ])

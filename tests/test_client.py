@@ -2,34 +2,34 @@ import threading
 import time
 
 import pytest
-import zerofun
+import portal
 
 
 SERVERS = [
-    zerofun.Server,
-    zerofun.BatchServer,
+    portal.Server,
+    portal.BatchServer,
 ]
 
 
 class TestClient:
 
   def test_none_result(self):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     def fn():
       pass
     server.bind('fn', fn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     assert client.fn().result() is None
     client.close()
     server.close()
 
   def test_manual_connect(self):
-    port = zerofun.free_port()
-    client = zerofun.Client('localhost', port, autoconn=False)
+    port = portal.free_port()
+    client = portal.Client('localhost', port, autoconn=False)
     assert not client.connected
-    server = zerofun.Server(port)
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
     client.connect()
@@ -40,17 +40,17 @@ class TestClient:
 
   @pytest.mark.parametrize('repeat', range(10))
   def test_manual_reconnect(self, repeat):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = zerofun.Client('localhost', port, autoconn=False)
+    client = portal.Client('localhost', port, autoconn=False)
     client.connect()
     assert client.fn(1).result() == 1
     server.close()
-    with pytest.raises(zerofun.Disconnected):
+    with pytest.raises(portal.Disconnected):
       client.fn(2).result()
-    server = zerofun.Server(port)
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
     client.connect()
@@ -59,17 +59,17 @@ class TestClient:
     server.close()
 
   def test_connect_before_server(self):
-    port = zerofun.free_port()
+    port = portal.free_port()
     results = []
 
     def client():
-      client = zerofun.Client('localhost', port)
+      client = portal.Client('localhost', port)
       results.append(client.fn(12).result())
       client.close()
 
-    thread = zerofun.Thread(client, start=True)
+    thread = portal.Thread(client, start=True)
     time.sleep(0.2)
-    server = zerofun.Server(port)
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
     thread.join()
@@ -77,11 +77,11 @@ class TestClient:
     assert results[0] == 12
 
   def test_future_order(self):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     future1 = client.fn(1)
     future2 = client.fn(2)
     future3 = client.fn(3)
@@ -92,14 +92,14 @@ class TestClient:
     client.close()
 
   def test_future_timeout(self):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     def fn(x):
       time.sleep(0.1)
       return x
     server.bind('fn', fn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     future = client.fn(42)
     with pytest.raises(TimeoutError):
       future.result(timeout=0)
@@ -112,8 +112,8 @@ class TestClient:
     server.close()
 
   def test_maxinflight(self):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     parallel = [0]
     lock = threading.Lock()
 
@@ -128,7 +128,7 @@ class TestClient:
     server.bind('fn', fn, workers=4)
     server.start(block=False)
 
-    client = zerofun.Client('localhost', port, maxinflight=2)
+    client = portal.Client('localhost', port, maxinflight=2)
     futures = [client.fn(i) for i in range(16)]
     results = [x.result() for x in futures]
     assert results == list(range(16))
@@ -137,11 +137,11 @@ class TestClient:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_future_cleanup(self, repeat):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     client.fn(1)
     client.fn(2)
     # Wait for the server to respond to the first two requests, so that all
@@ -157,15 +157,15 @@ class TestClient:
 
   @pytest.mark.parametrize('repeat', range(3))
   def test_future_cleanup_errors(self, repeat):
-    port = zerofun.free_port()
-    server = zerofun.Server(port, errors=False)
+    port = portal.free_port()
+    server = portal.Server(port, errors=False)
     def fn(x):
       if x == 2:
         raise ValueError(x)
       return x
     server.bind('fn', fn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port, maxinflight=1)
+    client = portal.Client('localhost', port, maxinflight=1)
     client.fn(1)
     client.fn(2)
     time.sleep(0.2)
@@ -177,11 +177,11 @@ class TestClient:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_client_threadsafe(self, repeat, users=16):
-    port = zerofun.free_port()
-    server = zerofun.Server(port)
+    port = portal.free_port()
+    server = portal.Server(port)
     server.bind('fn', lambda x: x, workers=4)
     server.start(block=False)
-    client = zerofun.Client('localhost', port, maxinflight=8)
+    client = portal.Client('localhost', port, maxinflight=8)
     barrier = threading.Barrier(users)
 
     def user():
@@ -189,14 +189,14 @@ class TestClient:
       for x in range(4):
         assert client.fn(x).result() == x
 
-    zerofun.run([zerofun.Thread(user) for _ in range(users)])
+    portal.run([portal.Thread(user) for _ in range(users)])
     server.close()
     client.close()
 
   @pytest.mark.parametrize('repeat', range(5))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_maxinflight_disconnect(self, repeat, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
 
@@ -218,22 +218,22 @@ class TestClient:
       server.close()
 
     def client():
-      client = zerofun.Client('localhost', port, maxinflight=2)
+      client = portal.Client('localhost', port, maxinflight=2)
       futures = [client.fn(x) for x in range(5)]
       results = [x.result() for x in futures]
       assert results == list(range(5))
       b.wait()
       client.close()
 
-    zerofun.run([
-      zerofun.Thread(server),
-      zerofun.Thread(client),
+    portal.run([
+      portal.Thread(server),
+      portal.Thread(client),
     ])
 
   @pytest.mark.parametrize('repeat', range(10))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_server_drops_autoconn(self, repeat, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
     c = threading.Barrier(2)
@@ -255,7 +255,7 @@ class TestClient:
       server.close()
 
     def client():
-      client = zerofun.Client(
+      client = portal.Client(
           'localhost', port, maxinflight=1, autoconn=True)
       assert client.fn(1).result() == 1
       a.wait()
@@ -266,15 +266,15 @@ class TestClient:
       c.wait()
       client.close()
 
-    zerofun.run([
-        zerofun.Thread(server),
-        zerofun.Thread(client),
+    portal.run([
+        portal.Thread(server),
+        portal.Thread(client),
     ])
 
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_server_drops_manual(self, repeat, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
 
@@ -294,20 +294,20 @@ class TestClient:
       server.close()
 
     def client():
-      client = zerofun.Client(
+      client = portal.Client(
           'localhost', port, maxinflight=1, autoconn=False)
       client.connect()
       assert client.fn(1).result() == 1
       a.wait()
       time.sleep(0.1)
-      with pytest.raises(zerofun.Disconnected):
+      with pytest.raises(portal.Disconnected):
         client.fn(3).result()
       client.connect()
       assert client.fn(3).result() == 3
       b.wait()
       client.close()
 
-    zerofun.run([
-        zerofun.Thread(server),
-        zerofun.Thread(client),
+    portal.run([
+        portal.Thread(server),
+        portal.Thread(client),
     ])

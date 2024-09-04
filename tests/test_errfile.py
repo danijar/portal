@@ -2,7 +2,7 @@ import pathlib
 import time
 
 import pytest
-import zerofun
+import portal
 
 
 class TestErrfile:
@@ -11,13 +11,13 @@ class TestErrfile:
     errfile = pathlib.Path(tmpdir) / 'error'
 
     def fn():
-      zerofun.setup(errfile=errfile, interval=0.1)
+      portal.setup(errfile=errfile, interval=0.1)
       try:
         raise ValueError
       except Exception as e:
-        zerofun.context.error(e, 'worker')
+        portal.context.error(e, 'worker')
 
-    zerofun.Process(fn, start=True).join()
+    portal.Process(fn, start=True).join()
     content = errfile.read_text()
     assert "Error in 'worker' (ValueError):" == content.split('\n')[0]
     assert 'Traceback (most recent call last)' in content
@@ -27,21 +27,21 @@ class TestErrfile:
   @pytest.mark.parametrize('repeat', range(3))
   def test_sibling_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = zerofun.context.mp.Semaphore(0)
+    ready = portal.context.mp.Semaphore(0)
 
     def fn1(ready, errfile):
-      zerofun.setup(errfile=errfile, interval=0.1)
+      portal.setup(errfile=errfile, interval=0.1)
       ready.release()
       raise ValueError('reason')
 
     def fn2(ready, errfile):
-      zerofun.setup(errfile=errfile, interval=0.1)
+      portal.setup(errfile=errfile, interval=0.1)
       ready.release()
       while True:
         time.sleep(0.1)
 
-    worker1 = zerofun.Process(fn1, ready, errfile, name='worker1', start=True)
-    worker2 = zerofun.Process(fn2, ready, errfile, name='worker2', start=True)
+    worker1 = portal.Process(fn1, ready, errfile, name='worker1', start=True)
+    worker2 = portal.Process(fn2, ready, errfile, name='worker2', start=True)
     ready.acquire()
     ready.acquire()
     worker1.join()
@@ -57,28 +57,28 @@ class TestErrfile:
   @pytest.mark.parametrize('repeat', range(3))
   def test_nested_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = zerofun.context.mp.Semaphore(0)
+    ready = portal.context.mp.Semaphore(0)
 
     def hang():
       while True:
         time.sleep(0.1)
 
     def outer(ready, errfile):
-      zerofun.setup(errfile=errfile, interval=0.1)
-      zerofun.Process(inner, ready, errfile, name='inner', start=True)
-      zerofun.Thread(hang, start=True)
-      zerofun.Process(hang, start=True)
+      portal.setup(errfile=errfile, interval=0.1)
+      portal.Process(inner, ready, errfile, name='inner', start=True)
+      portal.Thread(hang, start=True)
+      portal.Process(hang, start=True)
       ready.release()
       hang()
 
     def inner(ready, errfile):
-      zerofun.setup(errfile=errfile, interval=0.1)
-      zerofun.Thread(hang, start=True)
-      zerofun.Process(hang, start=True)
+      portal.setup(errfile=errfile, interval=0.1)
+      portal.Thread(hang, start=True)
+      portal.Process(hang, start=True)
       ready.release()
       raise ValueError('reason')
 
-    worker = zerofun.Process(outer, ready, errfile, name='outer', start=True)
+    worker = portal.Process(outer, ready, errfile, name='outer', start=True)
     ready.acquire()
     ready.acquire()
     worker.join()

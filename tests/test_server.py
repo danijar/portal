@@ -4,12 +4,12 @@ import time
 
 import numpy as np
 import pytest
-import zerofun
+import portal
 
 
 SERVERS = [
-    zerofun.Server,
-    zerofun.BatchServer,
+    portal.Server,
+    portal.BatchServer,
 ]
 
 
@@ -17,14 +17,14 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_basic(self, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     def fn(x):
       assert x == 42
       return 2 * x
     server.bind('fn', fn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     future = client.call('fn', 42)
     assert future.result() == 84
     client.close()
@@ -35,11 +35,11 @@ class TestServer:
     def fn(data):
       assert data == {'foo': np.array(1)}
       return {'foo': 2 * data['foo']}
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     server.bind('fn', fn)
     with server:
-      client = zerofun.Client('localhost', port)
+      client = portal.Client('localhost', port)
       future = client.fn({'foo': np.array(1)})
       result = future.result()
       assert result['foo'] == 2
@@ -47,11 +47,11 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_multiple_clients(self, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     server.bind('fn', lambda data: data)
     server.start(block=False)
-    clients = [zerofun.Client('localhost', port) for _ in range(10)]
+    clients = [portal.Client('localhost', port) for _ in range(10)]
     futures = [client.fn(i) for i, client in enumerate(clients)]
     results = [future.result() for future in futures]
     assert results == list(range(10))
@@ -60,23 +60,23 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_multiple_methods(self, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     server.bind('add', lambda x, y: x + y)
     server.bind('sub', lambda x, y: x - y)
     with server:
-      client = zerofun.Client('localhost', port)
+      client = portal.Client('localhost', port)
       assert client.add(3, 5).result() == 8
       assert client.sub(3, 5).result() == -2
       client.close()
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_unknown_method(self, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port, errors=False)
     server.bind('foo', lambda x: x)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     future = client.bar(42)
     try:
       future.result()
@@ -89,7 +89,7 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_server_errors(self, Server):
-    port = zerofun.free_port()
+    port = portal.free_port()
 
     def server(port):
       server = Server(port, errors=True)
@@ -102,10 +102,10 @@ class TestServer:
 
     # For the BatchServer, there are resource leak warnings on crash.
     os.environ['PYTHONWARNINGS'] = 'ignore'
-    server = zerofun.Process(server, port, start=True)
+    server = portal.Process(server, port, start=True)
     del os.environ['PYTHONWARNINGS']
 
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     assert client.fn(1).result() == 1
     assert server.running
     with pytest.raises(RuntimeError):
@@ -130,11 +130,11 @@ class TestServer:
     def postfn(x):
       logged.append(x)
 
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port, workers=4)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     futures = [client.fn(x) for x in range(10)]
     results = [x.result() for x in futures]
     server.close()
@@ -147,7 +147,7 @@ class TestServer:
   @pytest.mark.parametrize('Server', SERVERS)
   @pytest.mark.parametrize('workers', (1, 4))
   def test_postfn_no_backlog(self, repeat, Server, workers):
-    port = zerofun.free_port()
+    port = portal.free_port()
     lock = threading.Lock()
     work_calls = [0]
     done_calls = [0]
@@ -164,7 +164,7 @@ class TestServer:
     server = Server(port, workers=workers)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     futures = [client.fn(i) for i in range(20)]
     [future.result() for future in futures]
     client.close()
@@ -178,12 +178,12 @@ class TestServer:
       return x
     def fast(x):
       return x
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port, workers=1)
     server.bind('slow', slow)
     server.bind('fast', fast)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     slow_future = client.slow(0)
     fast_future = client.fast(0)
     assert not slow_future.done()
@@ -202,12 +202,12 @@ class TestServer:
       return x
     def fast(x):
       return x
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     server.bind('slow', slow, workers=1)
     server.bind('fast', fast, workers=1)
     server.start(block=False)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     slow_future = client.slow(0)
     fast_future = client.fast(0)
     # Both requests are processed in parallel, so the fast request returns
@@ -220,20 +220,20 @@ class TestServer:
   @pytest.mark.parametrize('Server', SERVERS)
   @pytest.mark.parametrize('workers', (1, 10))
   def test_proxy(self, Server, workers):
-    inner_port = zerofun.free_port()
-    outer_port = zerofun.free_port()
+    inner_port = portal.free_port()
+    outer_port = portal.free_port()
 
     server = Server(inner_port, 'InnerServer')
     server.bind('fn', lambda x: 2 * x)
     server.start(block=False)
 
     kwargs = dict(name='ProxyClient', maxinflight=4)
-    proxy_client = zerofun.Client('localhost', inner_port, **kwargs)
+    proxy_client = portal.Client('localhost', inner_port, **kwargs)
     proxy_server = Server(outer_port, 'ProxyServer', workers=workers)
     proxy_server.bind('fn2', lambda x: proxy_client.fn(x).result())
     proxy_server.start(block=False)
 
-    client = zerofun.Client('localhost', outer_port, 'OuterClient')
+    client = portal.Client('localhost', outer_port, 'OuterClient')
     futures = [client.fn2(x) for x in range(20)]
     results = [future.result() for future in futures]
     assert results == list(range(0, 40, 2))
@@ -245,7 +245,7 @@ class TestServer:
 
   @pytest.mark.parametrize('Server', SERVERS)
   def test_sharray(self, Server):
-    done = zerofun.context.mp.Event()
+    done = portal.context.mp.Event()
 
     def server(port, done):
       server = Server(port)
@@ -259,17 +259,17 @@ class TestServer:
       server.close()
 
     def client(port):
-      data = zerofun.SharedArray((3, 2), np.float32)
+      data = portal.SharedArray((3, 2), np.float32)
       data.array[:] = np.arange(6, dtype=np.float32).reshape(3, 2)
-      client = zerofun.Client('localhost', port)
+      client = portal.Client('localhost', port)
       result = client.call('fn', data).result()
       assert result.name == data.name
       assert result, data
       client.close()
 
-    port = zerofun.free_port()
-    client = zerofun.Process(client, port, start=True)
-    server = zerofun.Process(server, port, done, start=True)
+    port = portal.free_port()
+    client = portal.Process(client, port, start=True)
+    server = portal.Process(server, port, done, start=True)
     client.join()
     done.set()
     server.join()
@@ -285,12 +285,12 @@ class TestServer:
         time.sleep(0.2)
       return x
 
-    port = zerofun.free_port()
+    port = portal.free_port()
     server = Server(port)
     server.bind('fn', fn)
     server.start(block=False)
 
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     client.fn(1)
     barrier.wait()
     client.close()
@@ -298,7 +298,7 @@ class TestServer:
     assert stats['numrecv'] == 1
     assert stats['numsend'] == 0
 
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     assert client.fn(2).result() == 2
     client.close()
     server.close()

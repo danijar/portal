@@ -2,16 +2,16 @@ import threading
 import time
 
 import pytest
-import zerofun
+import portal
 
 
 class TestThread:
 
   def test_exitcode(self):
-    worker = zerofun.Thread(lambda: None, start=True)
+    worker = portal.Thread(lambda: None, start=True)
     worker.join()
     assert worker.exitcode == 0
-    worker = zerofun.Thread(lambda: 42, start=True)
+    worker = portal.Thread(lambda: 42, start=True)
     worker.join()
     assert worker.exitcode == 42
 
@@ -19,7 +19,7 @@ class TestThread:
     def fn():
       while True:
         time.sleep(0.1)
-    worker = zerofun.Thread(fn, start=True)
+    worker = portal.Thread(fn, start=True)
     worker.kill()
     assert not worker.running
     assert worker.exitcode == 2
@@ -28,8 +28,8 @@ class TestThread:
     def container():
       def fn():
         raise KeyError('foo')
-      zerofun.Thread(fn, start=True).join()
-    worker = zerofun.Process(container, start=True)
+      portal.Thread(fn, start=True).join()
+    worker = portal.Process(container, start=True)
     worker.join()
     assert not worker.running
     assert worker.exitcode == 1
@@ -41,12 +41,12 @@ class TestThread:
           time.sleep(0.1)
       children = []
       def fn():
-        children.append(zerofun.Process(hang, start=True))
-        children.append(zerofun.Thread(hang, start=True))
+        children.append(portal.Process(hang, start=True))
+        children.append(portal.Thread(hang, start=True))
         time.sleep(0.1)
         raise KeyError('foo')
-      zerofun.Thread(fn, start=True).join()
-    worker = zerofun.Process(container, start=True)
+      portal.Thread(fn, start=True).join()
+    worker = portal.Process(container, start=True)
     worker.join()
     assert not worker.running
     assert worker.exitcode == 1
@@ -56,7 +56,7 @@ class TestThread:
     barrier = threading.Barrier(2)
     child = [None]
     def outer():
-      child[0] = zerofun.Thread(inner)
+      child[0] = portal.Thread(inner)
       child[0].start()
       while True:
         time.sleep(0.1)
@@ -64,7 +64,7 @@ class TestThread:
       barrier.wait()
       while True:
         time.sleep(0.1)
-    worker = zerofun.Thread(outer, start=True)
+    worker = portal.Thread(outer, start=True)
     barrier.wait()
     worker.kill()
     time.sleep(0.1)
@@ -75,17 +75,17 @@ class TestThread:
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):
-    ready = zerofun.context.mp.Event()
+    ready = portal.context.mp.Event()
     proc = [None]
     def outer():
-      proc[0] = zerofun.Process(inner, ready, start=True)
+      proc[0] = portal.Process(inner, ready, start=True)
       while True:
         time.sleep(0.1)
     def inner(ready):
       ready.set()
       while True:
         time.sleep(0.1)
-    worker = zerofun.Thread(outer, start=True)
+    worker = portal.Thread(outer, start=True)
     ready.wait()
     worker.kill()
     assert not worker.running

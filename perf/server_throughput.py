@@ -1,7 +1,7 @@
 import collections
 import time
 
-import zerofun
+import portal
 
 
 def main():
@@ -11,10 +11,10 @@ def main():
   twoway = False
 
   def server(port):
-    server = zerofun.Server(port)
-    # server = zerofun.BatchServer(port)
-    # server = zerofun.BatchServer(port, process=False)
-    # server = zerofun.BatchServer(port, shmem=True)
+    server = portal.Server(port)
+    # server = portal.BatchServer(port)
+    # server = portal.BatchServer(port, process=False)
+    # server = portal.BatchServer(port, shmem=True)
     def fn(x):
       assert len(x) == size
       return x if twoway else b'ok'
@@ -23,7 +23,7 @@ def main():
 
   def client(port):
     data = bytearray(size)
-    client = zerofun.Client('localhost', port, maxinflight=prefetch + 1)
+    client = portal.Client('localhost', port, maxinflight=prefetch + 1)
     futures = collections.deque()
     for _ in range(prefetch):
       futures.append(client.call('foo', data))
@@ -44,11 +44,11 @@ def main():
       mbps *= 2 if twoway else 1
       print(mbps)  # 3700 oneway, 3000 twoway
 
-  zerofun.setup(hostname='localhost')
-  port = zerofun.free_port()
-  zerofun.run([
-      zerofun.Process(server, port),
-      zerofun.Process(client, port),
+  portal.setup(hostname='localhost')
+  port = portal.free_port()
+  portal.run([
+      portal.Process(server, port),
+      portal.Process(client, port),
   ])
 
 

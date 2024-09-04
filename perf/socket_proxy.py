@@ -2,7 +2,7 @@ import collections
 import queue
 import time
 
-import zerofun
+import portal
 
 
 def main():
@@ -12,7 +12,7 @@ def main():
   prefetch = 16
 
   def server(port1):
-    server = zerofun.ServerSocket(port1)
+    server = portal.ServerSocket(port1)
     durations = collections.deque(maxlen=50)
     start = time.time()
     while True:
@@ -27,8 +27,8 @@ def main():
       print(mbps)  # ~3500
 
   def proxy(port1, port2):
-    server = zerofun.ServerSocket(port2)
-    client = zerofun.ClientSocket('localhost', port1)
+    server = portal.ServerSocket(port2)
+    client = portal.ClientSocket('localhost', port1)
     addrs = collections.deque()
     while True:
       try:
@@ -45,19 +45,19 @@ def main():
 
   def client(port2):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = zerofun.ClientSocket('localhost', port2)
+    client = portal.ClientSocket('localhost', port2)
     for _ in range(prefetch):
       client.send(*data)
     while True:
       client.send(*data)
       assert client.recv() == b'ok'
 
-  port1 = zerofun.free_port()
-  port2 = zerofun.free_port()
-  zerofun.run([
-      zerofun.Process(server, port1),
-      zerofun.Process(proxy, port1, port2),
-      zerofun.Process(client, port2),
+  port1 = portal.free_port()
+  port2 = portal.free_port()
+  portal.run([
+      portal.Process(server, port1),
+      portal.Process(proxy, port1, port2),
+      portal.Process(client, port2),
   ])
 
 

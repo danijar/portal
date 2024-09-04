@@ -1,7 +1,7 @@
 import collections
 import time
 
-import zerofun
+import portal
 
 
 def main():
@@ -9,7 +9,7 @@ def main():
   size = 1024
 
   def server(port):
-    server = zerofun.Server(port)
+    server = portal.Server(port)
     def fn(x):
       assert len(x) == size
       return b'ok'
@@ -18,7 +18,7 @@ def main():
 
   def client(port):
     data = bytearray(size)
-    client = zerofun.Client('localhost', port)
+    client = portal.Client('localhost', port)
     futures = collections.deque()
     durations = collections.deque(maxlen=50)
     while True:
@@ -31,11 +31,11 @@ def main():
       ping = sum(durations) / len(durations)
       print(1000 * ping)  # <1ms
 
-  zerofun.setup(hostname='localhost')
-  port = zerofun.free_port()
-  zerofun.run([
-      zerofun.Process(server, port),
-      zerofun.Process(client, port),
+  portal.setup(hostname='localhost')
+  port = portal.free_port()
+  portal.run([
+      portal.Process(server, port),
+      portal.Process(client, port),
   ])
 
 
