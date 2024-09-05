@@ -98,17 +98,17 @@ class Client:
     reqnum = bytes(data[:8])
     status = int.from_bytes(data[8:16], 'little', signed=False)
     future = self.futures.pop(reqnum, None)
-    assert future, (
-        f'Unexpected request number: {reqnum}',
-        sorted(self.futures.keys()))
-    if status == 0:
+    if not future:
+      existing = sorted(self.futures.keys())
+      print(f'Unexpected request number: {reqnum}', existing)
+    elif status == 0:
       data = packlib.unpack(data[16:])
       future.set_result(data)
+      with self.cond: self.cond.notify_all()
     else:
       message = bytes(data[16:]).decode('utf-8')
       self._seterr(future, RuntimeError(message))
-    with self.cond:
-      self.cond.notify_all()
+      with self.cond: self.cond.notify_all()
     self.socket.recv()
 
   def _disc(self):
