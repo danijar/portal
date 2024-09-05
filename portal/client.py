@@ -47,7 +47,7 @@ class Client:
   def stats(self):
     now = time.time()
     stats = {
-        'inflight': self._numinflight(),
+        'inflight': len(self.futures),
         'numsend': self.sendrate[0],
         'numrecv': self.recvrate[0],
         'sendrate': self.sendrate[0] / (now - self.sendrate[1]),
@@ -65,7 +65,7 @@ class Client:
   def call(self, method, *data):
     reqnum = next(self.reqnum).to_bytes(8, 'little', signed=False)
     start = time.time()
-    while self._numinflight() >= self.maxinflight:
+    while len(self.futures) >= self.maxinflight:
       with self.cond: self.cond.wait(timeout=0.2)
       try:
         self.socket.require_connection(timeout=0)
@@ -92,9 +92,6 @@ class Client:
       self._seterr(future, client_socket.Disconnected)
     self.futures.clear()
     self.socket.close(timeout)
-
-  def _numinflight(self):
-    return len([x for x in self.futures.values() if not x.don])
 
   def _recv(self, data):
     assert len(data) >= 16, 'Unexpectedly short response'
