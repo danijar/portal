@@ -26,7 +26,7 @@ class Connection:
 class Options:
 
   ipv6: bool = False
-  hostname: str = ''
+  host: str = ''
   max_msg_size: int = 4 * 1024 ** 3
   max_recv_queue: int = 4096
   max_send_queue: int = 4096
@@ -43,10 +43,10 @@ class ServerSocket:
     self.options = Options(**{**contextlib.context.serverkw, **kwargs})
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-      self.addr = (self.options.hostname, port, 0, 0)
+      self.addr = (self.options.host, port, 0, 0)
     else:
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      self.addr = (self.options.hostname, port)
+      self.addr = (self.options.host, port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self.sock.bind(self.addr)
     self.sock.setblocking(False)

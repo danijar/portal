@@ -44,7 +44,7 @@ class Context:
       initfns=None,
       clientkw=None,
       serverkw=None,
-      hostname=None,
+      host=None,
       ipv6=None,
   ):
 
@@ -77,8 +77,8 @@ class Context:
       assert isinstance(serverkw, dict)
       self.serverkw = serverkw
 
-    if hostname is not None:
-      self.serverkw['hostname'] = hostname
+    if host is not None:
+      self.serverkw['host'] = host
 
     if ipv6 is not None:
       self.clientkw['ipv6'] = ipv6

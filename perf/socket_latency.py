@@ -29,7 +29,7 @@ def main():
       ping = sum(durations) / len(durations)
       print(1000 * ping)  # <1ms
 
-  portal.setup(hostname='localhost')
+  portal.setup(host='localhost')
   port = portal.free_port()
   portal.run([
       portal.Process(server, port),

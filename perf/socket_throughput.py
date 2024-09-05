@@ -44,7 +44,7 @@ def main():
       mbps *= 2 if twoway else 1
       print(mbps)  # 3500 oneway, 2500 twoway
 
-  portal.setup(hostname='localhost')
+  portal.setup(host='localhost')
   port = portal.free_port()
   portal.run([
       portal.Process(server, port),

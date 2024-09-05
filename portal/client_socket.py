@@ -186,11 +186,13 @@ class ClientSocket:
         sock.settimeout(0)
         self._log('Connection established')
         return sock
-      except ConnectionError as e:
-        error = e
-        time.sleep(0.1)
       except TimeoutError as e:
         error = e
+      except ConnectionError as e:
+        error = e
+      except socket.gaierror as e:
+        error = e
+      time.sleep(0.1)
       if once:
         self._log(f'Still trying to connect... ({error})')
         once = False

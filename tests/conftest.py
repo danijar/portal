@@ -1,4 +1,4 @@
 import portal
 
 # Do not expose server sockets externally to avoid popups on Mac.
-portal.setup(hostname='localhost')
+portal.setup(host='localhost')
