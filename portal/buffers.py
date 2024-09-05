@@ -54,7 +54,7 @@ class RecvBuffer:
 
   def __init__(self, maxsize):
     self.maxsize = maxsize
-    self.lenbuf = bytearray(4)
+    self.lenbuf = b''
     self.buffer = None
     self.pos = 0
 
@@ -64,9 +64,10 @@ class RecvBuffer:
 
   def recv(self, sock):
     if self.buffer is None:
-      size = sock.recv_into(memoryview(self.lenbuf)[self.pos:])
-      self.pos += max(0, size)
-      if self.pos == 4:
+      part = sock.recv(4 - len(self.lenbuf))
+      self.lenbuf += part
+      size = len(part)
+      if len(self.lenbuf) == 4:
         length = int.from_bytes(self.lenbuf, 'little', signed=False)
         assert 1 <= length <= self.maxsize, (1, length, self.maxsize)
         # We use Numpy to allocate uninitialized memory because Python's

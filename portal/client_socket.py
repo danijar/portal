@@ -111,10 +111,11 @@ class ClientSocket:
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     sel = selectors.DefaultSelector()
     sock = None
+    isconn = False  # Local mirror of self.isconn without the lock.
 
-    while self.running or (self.sendq and self.isconn.is_set()):
+    while self.running or (self.sendq and isconn):
 
-      if not self.isconn.is_set():
+      if not isconn:
         if not self.options.autoconn and not self.wantconn.wait(timeout=0.2):
           continue
         sock = self._connect()
@@ -122,27 +123,32 @@ class ClientSocket:
           break
         sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         self.isconn.set()
+        isconn = True
         if not self.options.autoconn:
           self.wantconn.clear()
         [x() for x in self.callbacks_conn]
 
       try:
 
-        sel.select(timeout=0.2)
+        ready = sel.select(timeout=0.2)
+        if not ready:
+          continue
+        _, mask = ready[0]
 
-        try:
-          recvbuf.recv(sock)
-          if recvbuf.done():
-            if self.recvq.qsize() > self.options.max_recv_queue:
-              raise RuntimeError('Too many incoming messages enqueued')
-            msg = recvbuf.result()
-            self.recvq.put(msg)
-            [x(msg) for x in self.callbacks_recv]
-            recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-        except BlockingIOError:
-          pass
+        if mask & selectors.EVENT_READ:
+          try:
+            recvbuf.recv(sock)
+            if recvbuf.done():
+              if self.recvq.qsize() > self.options.max_recv_queue:
+                raise RuntimeError('Too many incoming messages enqueued')
+              msg = recvbuf.result()
+              self.recvq.put(msg)
+              [x(msg) for x in self.callbacks_recv]
+              recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
+          except BlockingIOError:
+            pass
 
-        if self.sendq:
+        if self.sendq and mask & selectors.EVENT_WRITE:
           try:
             self.sendq[0].send(sock)
             if self.sendq[0].done():
@@ -155,6 +161,7 @@ class ClientSocket:
         detail = f'{detail}: {e}' if str(e) else detail
         self._log(f'Connection to server lost ({detail})')
         self.isconn.clear()
+        isconn = False
         sel.unregister(sock)
         sock.close()
         # Clear message queue on disconnect. There is no meaningful concept of
