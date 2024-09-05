@@ -110,6 +110,7 @@ class ClientSocket:
   def _loop(self):
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     sock = None
+    poll = select.poll()
     isconn = False  # Local mirror of self.isconn without the lock.
 
     while self.running or (self.sendq and isconn):
@@ -120,6 +121,7 @@ class ClientSocket:
         sock = self._connect()
         if not sock:
           break
+        poll.register(sock, select.POLLIN | select.POLLOUT)
         self.isconn.set()
         isconn = True
         if not self.options.autoconn:
@@ -128,9 +130,15 @@ class ClientSocket:
 
       try:
 
-        readable, writable, _ = select.select([sock], [sock], [], 0.2)
+        # TODO: According to the py-spy profiler, the GIL is held during
+        # polling. Is there a way to avoid that?
+        pairs = poll.poll(0.2)
+        if not pairs:
+          continue
+        _, mask = pairs[0]
 
-        if readable:
+
+        if mask & select.POLLIN:
           try:
             recvbuf.recv(sock)
             if recvbuf.done():
@@ -143,7 +151,7 @@ class ClientSocket:
           except BlockingIOError:
             pass
 
-        if self.sendq and writable:
+        if self.sendq and mask & select.POLLOUT:
           try:
             self.sendq[0].send(sock)
             if self.sendq[0].done():
@@ -157,6 +165,7 @@ class ClientSocket:
         self._log(f'Connection to server lost ({detail})')
         self.isconn.clear()
         isconn = False
+        poll.unregister(sock)
         sock.close()
         # Clear message queue on disconnect. There is no meaningful concept of
         # sucessful delivery of a message at this level. For example, the

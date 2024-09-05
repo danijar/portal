@@ -81,10 +81,18 @@ class Client:
     strlen = len(name).to_bytes(8, 'little', signed=False)
     sendargs = (reqnum, strlen, name, *packlib.pack(data))
     # self.socket.send(reqnum, strlen, name, *packlib.pack(data))
-    self.socket.send(*sendargs)
-    future = Future()
+    rai = [False]
+    future = Future(rai)
     future.sendargs = sendargs
     self.futures[reqnum] = future
+    # Store future before sending request because the response may come fast
+    # and the response handler runs in the socket's background thread.
+    try:
+      self.socket.send(*sendargs)
+    except client_socket.Disconnected:
+      future = self.futures.pop(reqnum)
+      future.rai[0] = True
+      raise
     return future
 
   def close(self, timeout=None):
@@ -113,10 +121,10 @@ class Client:
 
   def _disc(self):
     if self.socket.options.autoconn:
-      for future in self.futures.values():
+      for future in list(self.futures.values()):
         future.resend = True
     else:
-      for future in self.futures.values():
+      for future in list(self.futures.values()):
         self._seterr(future, client_socket.Disconnected)
       self.futures.clear()
 
@@ -127,17 +135,17 @@ class Client:
           self.socket.send(*future.sendargs)
 
   def _seterr(self, future, e):
-    raised = [False]
-    future.raised = raised
     future.set_error(e)
+    rai = future.rai
     weakref.finalize(future, lambda: (
-        None if raised[0] else self.errors.append(e)))
+        None if rai[0] else self.errors.append(e)))
 
 
 class Future:
 
-  def __init__(self):
-    self.raised = [False]
+  def __init__(self, rai):
+    assert rai == [False]
+    self.rai = rai
     self.con = threading.Condition()
     self.don = False
     self.res = None
@@ -147,7 +155,7 @@ class Future:
     if not self.done:
       return 'Future(done=False)'
     elif self.err:
-      return f"Future(done=True, error='{self.err}', raised={self.raised[0]})"
+      return f"Future(done=True, error='{self.err}', raised={self.rai[0]})"
     else:
       return 'Future(done=True)'
 
@@ -165,8 +173,8 @@ class Future:
     assert self.don
     if self.err is None:
       return self.res
-    if not self.raised[0]:
-      self.raised[0] = True
+    if not self.rai[0]:
+      self.rai[0] = True
       raise self.err
 
   def set_result(self, result):

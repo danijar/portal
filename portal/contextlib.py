@@ -2,6 +2,7 @@ import collections
 import multiprocessing as mp
 import os
 import pathlib
+import sys
 import threading
 import traceback
 
@@ -114,10 +115,10 @@ class Context:
     with self.printlock:
       style = utils.style(color='red')
       reset = utils.style(reset=True)
-      print(style + '\n---\n' + message + reset)
+      print(style + '\n---\n' + message + reset, file=sys.stderr)
     if self.errfile:
       self.errfile.write_text(message)
-      print(f'Wrote errorfile: {self.errfile}')
+      print(f'Wrote errorfile: {self.errfile}', file=sys.stderr)
 
   def shutdown(self, exitcode):
     # This kills the process tree forcefully to prevent hangs but results in
@@ -145,7 +146,8 @@ class Context:
   def _watcher(self):
     while True:
       if self.errfile and self.errfile.exists():
-        print(f'Shutting down due to error file: {self.errfile}')
+        message = f'Shutting down due to error file: {self.errfile}',
+        print(message, file=sys.stderr)
         self.shutdown(2)
         break
       if self.done.wait(self.interval):

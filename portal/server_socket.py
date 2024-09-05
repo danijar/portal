@@ -101,6 +101,8 @@ class ServerSocket:
     try:
       while self.running or self._numsending():
         writeable = []
+        # TODO: According to the py-spy profiler, the GIL is held during
+        # polling. Is there a way to avoid that?
         for key, mask in self.sel.select(timeout=0.2):
           if key.data is None and self.reading:
             assert mask & selectors.EVENT_READ

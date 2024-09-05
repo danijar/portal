@@ -48,8 +48,22 @@ class TestClient:
     client.connect()
     assert client.fn(1).result() == 1
     server.close()
-    with pytest.raises(portal.Disconnected):
-      client.fn(2).result()
+
+    assert len(client.futures) == 0
+    assert len(client.errors) == 0
+    try:
+      future = client.fn(2)
+      try:
+        future.result()
+        assert False
+      except portal.Disconnected:
+        assert True
+    except portal.Disconnected:
+      time.sleep(1)
+      future = None
+    assert len(client.futures) == 0
+    assert len(client.errors) == 0
+
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)

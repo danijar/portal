@@ -1,4 +1,4 @@
-__version__ = '3.1.6'
+__version__ = '3.1.8'
 
 import multiprocessing as mp
 try:
