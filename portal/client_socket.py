@@ -1,7 +1,7 @@
 import collections
 import dataclasses
 import queue
-import selectors
+import select
 import socket
 import sys
 import threading
@@ -109,7 +109,6 @@ class ClientSocket:
 
   def _loop(self):
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-    sel = selectors.DefaultSelector()
     sock = None
     isconn = False  # Local mirror of self.isconn without the lock.
 
@@ -121,7 +120,6 @@ class ClientSocket:
         sock = self._connect()
         if not sock:
           break
-        sel.register(sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
         self.isconn.set()
         isconn = True
         if not self.options.autoconn:
@@ -130,12 +128,9 @@ class ClientSocket:
 
       try:
 
-        ready = sel.select(timeout=0.2)
-        if not ready:
-          continue
-        _, mask = ready[0]
+        readable, writable, _ = select.select([sock], [sock], [], 0.2)
 
-        if mask & selectors.EVENT_READ:
+        if readable:
           try:
             recvbuf.recv(sock)
             if recvbuf.done():
@@ -148,7 +143,7 @@ class ClientSocket:
           except BlockingIOError:
             pass
 
-        if self.sendq and mask & selectors.EVENT_WRITE:
+        if self.sendq and writable:
           try:
             self.sendq[0].send(sock)
             if self.sendq[0].done():
@@ -162,7 +157,6 @@ class ClientSocket:
         self._log(f'Connection to server lost ({detail})')
         self.isconn.clear()
         isconn = False
-        sel.unregister(sock)
         sock.close()
         # Clear message queue on disconnect. There is no meaningful concept of
         # sucessful delivery of a message at this level. For example, the
@@ -213,6 +207,7 @@ class ClientSocket:
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       addr = self.addr
+    # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     after = self.options.keepalive_after
     every = self.options.keepalive_every
     fails = self.options.keepalive_fails

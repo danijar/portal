@@ -9,7 +9,7 @@ def main():
   size = 1024 ** 3 // 4
   parts = 64
   prefetch = 8
-  twoway = False
+  twoway = True  # False
   assert size % parts == 0
 
   def server(port):

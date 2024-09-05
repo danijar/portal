@@ -147,6 +147,7 @@ class Context:
       if self.errfile and self.errfile.exists():
         print(f'Shutting down due to error file: {self.errfile}')
         self.shutdown(2)
+        break
       if self.done.wait(self.interval):
         break
 
