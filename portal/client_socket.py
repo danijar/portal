@@ -10,7 +10,6 @@ import time
 from . import buffers
 from . import contextlib
 from . import thread
-from . import utils
 
 
 class Disconnected(Exception):
@@ -39,6 +38,7 @@ class ClientSocket:
     if port is None:
       host, port = host.rsplit(':', 1)
       port = int(port)
+      assert host, host
     self.addr = (host, port)
     self.name = name
     self.options = Options(**{**contextlib.context.clientkw, **kwargs})
@@ -227,9 +227,5 @@ class ClientSocket:
   def _log(self, *args):
     if not self.options.logging:
       return
-    if self.options.logging_color:
-      style = utils.style(color=self.options.logging_color)
-      reset = utils.style(reset=True)
-    else:
-      style, reset = '', ''
-    print(style + f'[{self.name}]' + reset, *args)
+    contextlib.context.print(
+        self.name, *args, color=self.options.logging_color)

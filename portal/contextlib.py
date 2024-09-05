@@ -96,6 +96,16 @@ class Context:
     self.initfns.append(pkl)
     call_now and fn()
 
+  def print(self, name, *args, color=None):
+    assert args
+    if color:
+      style = utils.style(color=color)
+      reset = utils.style(reset=True)
+    else:
+      style, reset = '', ''
+    with self.printlock:
+      print(style + f'[{name}]' + reset, *args)
+
   def error(self, e, name=None):
     typ, tb = type(e), e.__traceback__
     summary = list(traceback.format_exception_only(typ, e))[0].strip('\n')
