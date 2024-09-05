@@ -134,18 +134,18 @@ class Context:
 
   def _watcher(self):
     while True:
-      if self.done.wait(self.interval):
-        break
       if self.errfile and self.errfile.exists():
         print(f'Shutting down due to error file: {self.errfile}')
         self.shutdown(2)
+      if self.done.wait(self.interval):
+        break
 
 
 context = Context()
 
 
-def initfn(fn):
-  context.initfn(fn)
+def initfn(fn, call_now=True):
+  context.initfn(fn, call_now)
 
 
 def setup(**kwargs):

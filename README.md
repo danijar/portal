@@ -7,8 +7,8 @@ Fast and reliable distributed systems in Python.
 ## Features
 
 - 📡 **Communication:** Portal lets you bind functions to a `Server` and call
-  them from a `Client`. Wait on results via `Future` objects. Clients can
-  automatically restore broken connections.
+  them from one or more `Client`s. Wait on results via `Future` objects.
+  Clients can automatically restore broken connections.
 - 🚀 **Performance:** Optimized for throughput and latency. Array data is
   zero-copy serialized and deserialized for throughput near the hardware limit.
 - 🤸 **Flexibility:** Function inputs and outputs can be nested dicts and lists

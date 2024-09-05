@@ -31,6 +31,7 @@ class Options:
   max_recv_queue: int = 4096
   max_send_queue: int = 4096
   logging: bool = True
+  logging_color: str = 'blue'
 
 
 class ServerSocket:
@@ -161,7 +162,11 @@ class ServerSocket:
     return sum(len(x.sendbufs) for x in self.conns.values())
 
   def _log(self, *args, **kwargs):
-    if self.options.logging:
-      style = utils.style(color='blue', bold=True)
+    if not self.options.logging:
+      return
+    if self.options.logging_color:
+      style = utils.style(color=self.options.logging_color)
       reset = utils.style(reset=True)
-      print(style + f'[{self.name}]', *args, reset)
+    else:
+      style, reset = '', ''
+    print(style + f'[{self.name}]' + reset, *args)

@@ -12,7 +12,7 @@ from . import packlib
 class Client:
 
   def __init__(
-      self, host, port, name='Client', maxinflight=16, **kwargs):
+      self, host, port=None, name='Client', maxinflight=16, **kwargs):
     assert 1 <= maxinflight, maxinflight
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))

@@ -29,6 +29,7 @@ class Options:
   keepalive_every: float = 10
   keepalive_fails: int = 10
   logging: bool = True
+  logging_color: str = 'yellow'
 
 
 class ClientSocket:
@@ -175,6 +176,7 @@ class ClientSocket:
     once = True
     while self.running:
       sock, addr = self._create()
+      error = None
       try:
         # We need to resolve the address regularly.
         if contextlib.context.resolver:
@@ -185,12 +187,12 @@ class ClientSocket:
         self._log('Connection established')
         return sock
       except ConnectionError as e:
-        self._log(f'Connection error ({e})')
+        error = e
         time.sleep(0.1)
-      except TimeoutError:
-        pass
+      except TimeoutError as e:
+        error = e
       if once:
-        self._log('Still trying to connect...')
+        self._log(f'Still trying to connect... ({error})')
         once = False
       sock.close()
     return None
@@ -221,7 +223,11 @@ class ClientSocket:
     return sock, addr
 
   def _log(self, *args):
-    if self.options.logging:
-      style = utils.style(color='yellow', bold=True)
+    if not self.options.logging:
+      return
+    if self.options.logging_color:
+      style = utils.style(color=self.options.logging_color)
       reset = utils.style(reset=True)
-      print(style + f'[{self.name}]', *args, reset)
+    else:
+      style, reset = '', ''
+    print(style + f'[{self.name}]' + reset, *args)
