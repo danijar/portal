@@ -24,31 +24,30 @@ class TestErrfile:
     assert 'line' in content
     assert 'in fn' in content
 
-  @pytest.mark.parametrize('repeat', range(3))
+  @pytest.mark.parametrize('repeat', range(5))
   def test_sibling_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = portal.context.mp.Semaphore(0)
+    barrier = portal.context.mp.Barrier(3)
 
-    def fn1(ready, errfile):
+    def fn1(barrier, errfile):
       portal.setup(errfile=errfile, interval=0.1)
-      ready.release()
+      barrier.wait()
       raise ValueError('reason')
 
-    def fn2(ready, errfile):
+    def fn2(barrier, errfile):
       portal.setup(errfile=errfile, interval=0.1)
-      ready.release()
+      barrier.wait()
       while True:
         time.sleep(0.1)
 
-    worker1 = portal.Process(fn1, ready, errfile, name='worker1', start=True)
-    worker2 = portal.Process(fn2, ready, errfile, name='worker2', start=True)
-    ready.acquire()
-    ready.acquire()
+    worker1 = portal.Process(fn1, barrier, errfile, start=True)
+    worker2 = portal.Process(fn2, barrier, errfile, start=True)
+    barrier.wait()
     worker1.join()
     worker2.join()
     content = errfile.read_text()
     first_line = content.split('\n')[0]
-    assert "Error in 'worker1' (ValueError: reason):" == first_line
+    assert "Error in 'fn1' (ValueError: reason):" == first_line
     assert not worker1.running
     assert not worker2.running
     assert worker1.exitcode == 1

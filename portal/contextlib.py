@@ -60,6 +60,7 @@ class Context:
         errfile = pathlib.Path(errfile)
       assert hasattr(errfile, 'exists') and hasattr(errfile, 'write_text')
       self.errfile = errfile
+      self._check_errfile()
 
     if interval:
       assert isinstance(interval, (int, float))
@@ -144,14 +145,14 @@ class Context:
     return self.children[ident]
 
   def _watcher(self):
-    while True:
-      if self.errfile and self.errfile.exists():
-        message = f'Shutting down due to error file: {self.errfile}',
-        print(message, file=sys.stderr)
-        self.shutdown(2)
-        break
-      if self.done.wait(self.interval):
-        break
+    while not self.done.wait(self.interval):
+      self._check_errfile()
+
+  def _check_errfile(self):
+    if self.errfile and self.errfile.exists():
+      message = f'Shutting down due to error file: {self.errfile}'
+      print(message, file=sys.stderr)
+      self.shutdown(exitcode=2)
 
 
 context = Context()
