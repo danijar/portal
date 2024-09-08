@@ -141,8 +141,11 @@ class ServerSocket:
       conn.recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     try:
       conn.recvbuf.recv(conn.sock)
-    except ConnectionResetError:
-      self._disconnect(conn)
+    except OSError as e:
+      # For example:
+      # - ConnectionResetError
+      # - TimeoutError: [Errno 110] Connection timed out
+      self._disconnect(conn, e)
       return
     if conn.recvbuf.done():
       if self.recvq.qsize() > self.options.max_recv_queue:
@@ -150,8 +153,10 @@ class ServerSocket:
       self.recvq.put((conn.addr, conn.recvbuf.result()))
       conn.recvbuf = None
 
-  def _disconnect(self, conn):
-    self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]}')
+  def _disconnect(self, conn, e):
+    detail = f'{type(e).__name__}'
+    detail = f'{detail}: {e}' if str(e) else detail
+    self._log(f'Closed connection to {conn.addr[0]}:{conn.addr[1]} ({detail})')
     conn = self.conns.pop(conn.addr)
     if conn.sendbufs:
       count = len(conn.sendbufs)

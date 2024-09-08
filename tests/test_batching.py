@@ -110,7 +110,8 @@ class TestBatching:
     client.close()
     server.close()
 
-  def test_shape_mismatch(self):
+  @pytest.mark.parametrize('repeat', range(5))
+  def test_shape_mismatch(self, repeat):
     port = portal.free_port()
     server = portal.BatchServer(port, errors=False)
     server.bind('fn', lambda x: x, batch=2)
