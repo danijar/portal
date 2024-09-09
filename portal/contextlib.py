@@ -61,6 +61,7 @@ class Context:
       assert hasattr(errfile, 'exists') and hasattr(errfile, 'write_text')
       self.errfile = errfile
       self._check_errfile()
+      self._install_excepthook()
 
     if interval:
       assert isinstance(interval, (int, float))
@@ -147,6 +148,16 @@ class Context:
   def _watcher(self):
     while not self.done.wait(self.interval):
       self._check_errfile()
+
+  def _install_excepthook(self):
+    existing = sys.excepthook
+    def patched(typ, val, tb):
+      if self.errfile:
+        message = ''.join(traceback.format_exception(typ, val, tb)).strip('\n')
+        self.errfile.write_text(message)
+        print(f'Wrote errorfile: {self.errfile}', file=sys.stderr)
+      return existing(typ, val, tb)
+    sys.excepthook = patched
 
   def _check_errfile(self):
     if self.errfile and self.errfile.exists():

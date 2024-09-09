@@ -22,7 +22,7 @@ jobs:
         python -m pip install pytest
     - name: Run tests
       run: |
-        python -m pytest tests
+        python -m pytest tests -vv -s
     - name: Package installation
       run: |
         python -m pip install portal
