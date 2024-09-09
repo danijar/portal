@@ -78,13 +78,13 @@ def kill_procs(procs, timeout=3):
       if p.status() != psutil.STATUS_ZOMBIE else None), procs)
 
 
-def free_port():
+def free_port(low=10000, high=50000):
   # Return a port that is currently free. This function is not thread or
   # process safe, because there is no way to guarantee that the port will still
   # be free at the time it will be used.
   rng = np.random.default_rng()
   while True:
-    port = int(rng.integers(2000, 7000))
+    port = int(rng.integers(low, high))
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
       if s.connect_ex(('', port)):
         return port

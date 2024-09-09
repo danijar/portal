@@ -48,6 +48,7 @@ class ServerSocket:
       self.addr = (self.options.host, port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     # self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    self._log(f'Binding to {self.addr[0]}:{self.addr[1]}')
     self.sock.bind(self.addr)
     self.sock.setblocking(False)
     self.sock.listen()
