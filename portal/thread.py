@@ -60,8 +60,9 @@ class Thread:
       self.thread.join(timeout)
     return self
 
-  def kill(self, timeout=3):
+  def kill(self, timeout=1):
     utils.kill_threads(self.thread, timeout)
+    [x.kill(0.2) for x in contextlib.context.get_children(self.ident)]
     return self
 
   def __repr__(self):

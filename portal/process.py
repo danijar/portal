@@ -52,7 +52,14 @@ class Process:
   def running(self):
     if not self.started:
       return False
-    return self.process.is_alive()
+    if not self.process.is_alive():
+      return False
+    try:
+      if psutil.Process(self.pid).status() == psutil.STATUS_ZOMBIE:
+        return False
+    except psutil.NoSuchProcess:
+      return False
+    return True
 
   @property
   def exitcode(self):
@@ -76,8 +83,7 @@ class Process:
 
   def kill(self, timeout=1):
     try:
-      proc = psutil.Process(self.pid)
-      tree = [proc] + list(proc.children(recursive=True))
+      tree = list(psutil.Process(self.pid).children(recursive=True))
     except psutil.NoSuchProcess:
       tree = []
     self.process.terminate()

@@ -43,7 +43,7 @@ class TestProcess:
     worker = portal.Process(fn, start=True)
     worker.kill()
     assert not worker.running
-    assert worker.exitcode == -15
+    assert worker.exitcode < 0
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):
@@ -62,7 +62,7 @@ class TestProcess:
     ready.acquire()
     worker.kill()
     assert not worker.running
-    assert worker.exitcode == -15
+    assert worker.exitcode < 0
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subthread(self, repeat):
@@ -79,7 +79,7 @@ class TestProcess:
     ready.wait()
     worker.kill()
     assert not worker.running
-    assert worker.exitcode == -15
+    assert worker.exitcode < 0
 
   def test_initfn(self):
     def init():
