@@ -21,7 +21,6 @@ class Thread:
   """
 
   def __init__(self, fn, *args, name=None, start=False):
-    global TIDS
     self.fn = fn
     self.excode = None
     name = name or getattr(fn, '__name__', 'thread')

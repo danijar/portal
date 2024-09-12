@@ -148,4 +148,7 @@ class Server:
     data = message.encode('utf-8')
     self.socket.send(addr, reqnum, status, data)
     if self.errors:
+      # Wait until the error is delivered to the client and then raise.
+      self.socket.shutdown()
+      self.socket.close()
       raise RuntimeError(message)

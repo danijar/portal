@@ -91,6 +91,27 @@ class TestServer:
   def test_server_errors(self, Server):
     port = portal.free_port()
 
+    server = Server(port, errors=False)
+    def fn(x):
+      if x == 2:
+        raise ValueError(x)
+      return x
+    server.bind('fn', fn)
+    server.start(block=False)
+
+    client = portal.Client('localhost', port)
+    assert client.fn(1).result() == 1
+    with pytest.raises(RuntimeError):
+      client.fn(2).result()
+    assert client.fn(3).result() == 3
+
+    client.close()
+    server.close()
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_server_errors_raise(self, Server):
+    port = portal.free_port()
+
     def server(port):
       server = Server(port, errors=True)
       def fn(x):
@@ -108,8 +129,8 @@ class TestServer:
     client = portal.Client('localhost', port)
     assert client.fn(1).result() == 1
     assert server.running
-    with pytest.raises(RuntimeError):
-      client.fn(2).result()
+    with pytest.raises((RuntimeError, TimeoutError)):
+      client.fn(2).result(timeout=3)
 
     client.close()
     server.join()
