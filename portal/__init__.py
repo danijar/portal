@@ -1,4 +1,4 @@
-__version__ = '3.2.1'
+__version__ = '3.2.0'
 
 import multiprocessing as mp
 try:
@@ -29,4 +29,5 @@ from .packlib import tree_equals
 from .sharray import SharedArray
 
 from .utils import free_port
+from .utils import proc_alive
 from .utils import run

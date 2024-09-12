@@ -107,16 +107,7 @@ class TestErrfile:
     assert not worker.running
     pids = [queue.get() for _ in range(4)]
     time.sleep(2.0)  # On some systems this can take a while.
-    assert not alive(pids[0])
-    assert not alive(pids[1])
-    assert not alive(pids[2])
-    assert not alive(pids[3])
-
-
-def alive(pid):
-  try:
-    os.kill(pid, 0)
-  except OSError:
-    assert True
-  else:
-    assert False
+    assert not portal.proc_alive(pids[0])
+    assert not portal.proc_alive(pids[1])
+    assert not portal.proc_alive(pids[2])
+    assert not portal.proc_alive(pids[3])

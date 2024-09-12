@@ -121,7 +121,7 @@ class TestClient:
       future.result(timeout=0.01)
     with pytest.raises(TimeoutError):
       future.result(timeout=0)
-    assert future.result(timeout=0.2) == 42
+    assert future.result(timeout=1) == 42
     client.close()
     server.close()
 

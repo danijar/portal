@@ -1,4 +1,6 @@
 import ctypes
+import errno
+import os
 import socket
 import sys
 import threading
@@ -73,8 +75,21 @@ def kill_proc(procs, timeout=1):
   # Should never happen but print warning if any survived.
   eachproc(lambda p: (
       print('Killed subprocess is still alive.')
-      if p.status() != psutil.STATUS_ZOMBIE else None), procs)
+      if proc_alive(p.pid) else None), procs)
 
+
+def proc_alive(pid):
+  try:
+    if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
+      return False
+  except psutil.NoSuchProcess:
+    return False
+  try:
+    os.kill(pid, 0)
+  except OSError as e:
+    if e.errno == errno.ESRCH:
+      return False
+  return True
 
 
 def free_port():

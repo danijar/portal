@@ -29,6 +29,7 @@ class Thread:
         target=self._wrapper, args=args, name=name, daemon=True)
     self.thread.children = []
     self.started = False
+    self.ready = threading.Barrier(2)
     contextlib.context.add_worker(self)
     start and self.start()
 
@@ -54,11 +55,11 @@ class Thread:
     assert not self.started
     self.started = True
     self.thread.start()
+    self.ready.wait()
     return self
 
   def join(self, timeout=None):
-    if self.running:
-      self.thread.join(timeout)
+    self.thread.join(timeout)
     return self
 
   def kill(self, timeout=1.0):
@@ -75,6 +76,7 @@ class Thread:
 
   def _wrapper(self, *args):
     try:
+      self.ready.wait()
       exitcode = self.fn(*args)
       exitcode = exitcode if isinstance(exitcode, int) else 0
       self.excode = exitcode

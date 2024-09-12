@@ -60,17 +60,10 @@ class Process:
       return False
     if not self.process.is_alive():
       return False
-    try:
-      os.kill(self.pid, 0)
-    except OSError as err:
-      if err.errno == errno.ESRCH:
-        return False
-    return True
+    return utils.proc_alive(self.pid)
 
   @property
   def exitcode(self):
-    if not self.started or self.running:
-      return None
     exitcode = self.process.exitcode
     if self.killed and exitcode is None:
       return -9
@@ -86,14 +79,13 @@ class Process:
 
   def join(self, timeout=None):
     assert self.started
-    if self.running:
-      self.process.join(timeout)
+    self.process.join(timeout)
     return self
 
   def kill(self, timeout=1):
+    # Cannot early exit if process is not running, because it may just be
+    # starting up.
     assert self.started
-    if not self.running:
-      return self
     try:
       children = list(psutil.Process(self.pid).children(recursive=True))
     except psutil.NoSuchProcess:
@@ -132,6 +124,4 @@ class Process:
       contextlib.context.error(e, name)
       exitcode = 1
     finally:
-      children = list(psutil.Process(os.getpid()).children(recursive=True))
-      utils.kill_proc(children, timeout=1)
       contextlib.context.shutdown(exitcode)

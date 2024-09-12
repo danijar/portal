@@ -1,14 +1,13 @@
 import multiprocessing as mp
 import os
 import pathlib
-import signal
 import sys
 import threading
 import traceback
 
 import cloudpickle
+import psutil
 
-from . import process
 from . import utils
 
 
@@ -122,12 +121,15 @@ class Context:
       print(f'Wrote errorfile: {self.errfile}', file=sys.stderr)
 
   def shutdown(self, exitcode):
-    if exitcode == 0:
-      for child in self.children(threading.main_thread()):
-        child.kill()
-      os._exit(0)
-    else:
-      os._exit(exitcode)
+    children = list(psutil.Process(os.getpid()).children(recursive=True))
+    utils.kill_proc(children, timeout=1)
+    # TODO
+    # if exitcode == 0:
+    #   for child in self.children(threading.main_thread()):
+    #     child.kill()
+    #   os._exit(0)
+    # else:
+    os._exit(exitcode)
 
   def close(self):
     self.done.set()
