@@ -83,7 +83,7 @@ class Server:
     self.close()
 
   def _loop(self):
-    while self.running or self.jobs or self.postfn_out:
+    while self.running or self.jobs or self.postfn_inp or self.postfn_out:
       while True:  # Loop syntax used to break on error.
         if not self.running:  # Do not accept further requests.
           break

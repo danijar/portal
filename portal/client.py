@@ -80,7 +80,6 @@ class Client:
     name = method.encode('utf-8')
     strlen = len(name).to_bytes(8, 'little', signed=False)
     sendargs = (reqnum, strlen, name, *packlib.pack(data))
-    # self.socket.send(reqnum, strlen, name, *packlib.pack(data))
     rai = [False]
     future = Future(rai)
     future.sendargs = sendargs

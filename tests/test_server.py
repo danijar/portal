@@ -151,16 +151,19 @@ class TestServer:
     lock = threading.Lock()
     work_calls = [0]
     done_calls = [0]
+
     def workfn(x):
       with lock:
         work_calls[0] += 1
         print(work_calls[0], done_calls[0])
         assert work_calls[0] <= done_calls[0] + workers + 1
       return x, x
+
     def postfn(x):
       with lock:
         done_calls[0] += 1
       time.sleep(0.01)
+
     server = Server(port, workers=workers)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
@@ -173,11 +176,14 @@ class TestServer:
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_shared_pool(self, repeat, Server):
+
     def slow(x):
       time.sleep(0.2)
       return x
+
     def fast(x):
       return x
+
     port = portal.free_port()
     server = Server(port, workers=1)
     server.bind('slow', slow)
@@ -197,11 +203,14 @@ class TestServer:
   @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
   def test_separate_pools(self, repeat, Server):
+
     def slow(x):
       time.sleep(0.1)
       return x
+
     def fast(x):
       return x
+
     port = portal.free_port()
     server = Server(port)
     server.bind('slow', slow, workers=1)

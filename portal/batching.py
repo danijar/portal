@@ -53,8 +53,8 @@ class BatchServer:
   def close(self, timeout=None):
     assert self.started
     self.running.clear()
-    self.server.close(timeout and 0.5 * timeout)
-    self.batcher.join(timeout and 0.5 * timeout)
+    self.server.close(timeout)
+    self.batcher.join(timeout)
     self.batcher.kill()
 
   def stats(self):
@@ -160,12 +160,12 @@ def batcher(
     if errors:
       raise RuntimeError(message)
 
-  outer = server_socket.ServerSocket(outer_port, f'{name}Server', **kwargs)
-  inner = client.Client('localhost', inner_port, f'{name}Client', **kwargs)
-  batches = {}  # {method: ([addr], [reqnum], structure, [array])}
-  jobs = []
-  shutdown = False
   try:
+    outer = server_socket.ServerSocket(outer_port, f'{name}Server', **kwargs)
+    inner = client.Client('localhost', inner_port, f'{name}Client', **kwargs)
+    batches = {}  # {method: ([addr], [reqnum], structure, [array])}
+    jobs = []
+    shutdown = False
     while running.is_set() or jobs:
       if running.is_set():
         maybe_recv(outer, inner, jobs, batches)
