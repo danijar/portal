@@ -1,6 +1,5 @@
 import atexit
 import errno
-import os
 import traceback
 
 import cloudpickle
@@ -37,8 +36,10 @@ class Process:
     name = name or getattr(fn, '__name__', 'process')
     fn = cloudpickle.dumps(fn)
     options = contextlib.context.options()
+    self.ready = contextlib.context.mp.Barrier(2)
     self.process = contextlib.context.mp.Process(
-        target=self._wrapper, name=name, args=(options, name, fn, args))
+        target=self._wrapper, name=name,
+        args=(options, self.ready, name, fn, args))
     self.started = False
     self.killed = False
     self.thepid = None
@@ -73,6 +74,7 @@ class Process:
     assert not self.started
     self.started = True
     self.process.start()
+    self.ready.wait()
     self.thepid = self.process.pid
     assert self.thepid is not None
     return self
@@ -83,8 +85,6 @@ class Process:
     return self
 
   def kill(self, timeout=1):
-    # Cannot early exit if process is not running, because it may just be
-    # starting up.
     assert self.started
     try:
       children = list(psutil.Process(self.pid).children(recursive=True))
@@ -108,9 +108,10 @@ class Process:
     return 'Process(' + ', '.join(attrs) + ')'
 
   @staticmethod
-  def _wrapper(options, name, fn, args):
+  def _wrapper(options, ready, name, fn, args):
     exitcode = 0
     try:
+      ready.wait()
       contextlib.setup(**options)
       fn = cloudpickle.loads(fn)
       exitcode = fn(*args)
