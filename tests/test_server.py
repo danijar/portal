@@ -199,7 +199,7 @@ class TestServer:
   def test_shared_pool(self, repeat, Server):
 
     def slow(x):
-      time.sleep(0.2)
+      time.sleep(0.5)
       return x
 
     def fast(x):
@@ -226,7 +226,7 @@ class TestServer:
   def test_separate_pools(self, repeat, Server):
 
     def slow(x):
-      time.sleep(0.1)
+      time.sleep(0.5)
       return x
 
     def fast(x):

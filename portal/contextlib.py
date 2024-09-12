@@ -4,6 +4,7 @@ import pathlib
 import sys
 import threading
 import traceback
+import warnings
 
 import cloudpickle
 import psutil
@@ -143,7 +144,12 @@ class Context:
       return
     if hasattr(worker, 'thread'):
       assert current != worker.thread
-    current.children.append(worker)
+    try:
+      current.children.append(worker)
+    except AttributeError:
+      warnings.warn(
+          'Using Portal from plain Python threads is discouraged because ' +
+          'they can cause hangs during shutdown.')
 
   def children(self, thread):
     current = thread or threading.current_thread()

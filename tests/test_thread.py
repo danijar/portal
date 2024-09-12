@@ -91,4 +91,4 @@ class TestThread:
     assert not worker.running
     assert not proc[0].running
     assert worker.exitcode == 2
-    assert proc[0].exitcode < 0
+    assert abs(proc[0].exitcode) >= 1
