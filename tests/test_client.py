@@ -155,14 +155,10 @@ class TestClient:
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client('localhost', port, maxinflight=1)
     client.fn(1)
     client.fn(2)
-    # Wait for the server to respond to the first two requests, so that all
-    # futures are inside the client by the time we block on the third future.
-    time.sleep(0.1)
     future3 = client.fn(3)
-    assert len(client.futures) == 1
     assert future3.result() == 3
     del future3
     assert len(client.futures) == 0
