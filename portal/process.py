@@ -1,4 +1,6 @@
 import atexit
+import errno
+import os
 import traceback
 
 import cloudpickle
@@ -20,24 +22,28 @@ class Process:
   2. The process terminates its nested child processes when it encounters an
   error. This prevents lingering subprocesses on error.
 
-  3. When the parent process encounters an error, the subprocess will be killed
+  3. When the parent process encounters an error, its subprocess will be killed
   via `atexit`, preventing hangs.
 
   4. It inherits the context object of its parent process, which provides
   cloudpickled initializer functions for each nested child process and error
   file watching for global shutdown on error.
+
+  5. Standard Python subprocesses do not reliably return the running() state of
+  the process. This class makes it more reliable.
   """
 
   def __init__(self, fn, *args, name=None, start=False):
     name = name or getattr(fn, '__name__', 'process')
     fn = cloudpickle.dumps(fn)
-    context = contextlib.context
-    options = context.options()
-    self.process = context.mp.Process(
+    options = contextlib.context.options()
+    self.process = contextlib.context.mp.Process(
         target=self._wrapper, name=name, args=(options, name, fn, args))
-    context.add_child(self)
     self.started = False
+    self.killed = False
+    self.thepid = None
     atexit.register(self.kill)
+    contextlib.context.add_worker(self)
     start and self.start()
 
   @property
@@ -46,7 +52,7 @@ class Process:
 
   @property
   def pid(self):
-    return self.process.pid
+    return self.thepid
 
   @property
   def running(self):
@@ -55,24 +61,27 @@ class Process:
     if not self.process.is_alive():
       return False
     try:
-      if psutil.Process(self.pid).status() == psutil.STATUS_ZOMBIE:
+      os.kill(self.pid, 0)
+    except OSError as err:
+      if err.errno == errno.ESRCH:
         return False
-    except psutil.NoSuchProcess:
-      return False
     return True
 
   @property
   def exitcode(self):
     if not self.started or self.running:
       return None
-    else:
-      return self.process.exitcode
+    exitcode = self.process.exitcode
+    if self.killed and exitcode is None:
+      return -9
+    return exitcode
 
   def start(self):
     assert not self.started
     self.started = True
     self.process.start()
-    assert self.pid is not None
+    self.thepid = self.process.pid
+    assert self.thepid is not None
     return self
 
   def join(self, timeout=None):
@@ -82,14 +91,23 @@ class Process:
     return self
 
   def kill(self, timeout=1):
+    assert self.started
+    if not self.running:
+      return self
     try:
-      tree = list(psutil.Process(self.pid).children(recursive=True))
+      children = list(psutil.Process(self.pid).children(recursive=True))
     except psutil.NoSuchProcess:
-      tree = []
-    self.process.terminate()
-    self.process.join(timeout / 2)
-    self.process.kill()
-    utils.kill_procs(tree, timeout / 2)
+      children = []
+    try:
+      self.process.terminate()
+      self.process.join(timeout)
+      self.process.kill()
+      utils.kill_proc(children, timeout)
+    except OSError as e:
+      if e.errno != errno.ESRCH:
+        contextlib.context.error(e, self.name)
+        contextlib.context.shutdown(exitcode=1)
+    self.killed = True
     return self
 
   def __repr__(self):
@@ -114,4 +132,6 @@ class Process:
       contextlib.context.error(e, name)
       exitcode = 1
     finally:
+      children = list(psutil.Process(os.getpid()).children(recursive=True))
+      utils.kill_proc(children, timeout=1)
       contextlib.context.shutdown(exitcode)

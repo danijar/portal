@@ -137,7 +137,6 @@ class ClientSocket:
           continue
         _, mask = pairs[0]
 
-
         if mask & select.POLLIN:
           try:
             recvbuf.recv(sock)

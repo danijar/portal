@@ -1,5 +1,4 @@
 import threading
-import time
 import traceback
 
 from . import contextlib
@@ -22,13 +21,15 @@ class Thread:
   """
 
   def __init__(self, fn, *args, name=None, start=False):
+    global TIDS
     self.fn = fn
     self.excode = None
     name = name or getattr(fn, '__name__', 'thread')
     self.thread = threading.Thread(
         target=self._wrapper, args=args, name=name, daemon=True)
-    contextlib.context.add_child(self)
+    self.thread.children = []
     self.started = False
+    contextlib.context.add_worker(self)
     start and self.start()
 
   @property
@@ -36,8 +37,8 @@ class Thread:
     return self.thread.name
 
   @property
-  def ident(self):
-    return self.thread.ident
+  def tid(self):
+    return self.thetid
 
   @property
   def running(self):
@@ -60,9 +61,11 @@ class Thread:
       self.thread.join(timeout)
     return self
 
-  def kill(self, timeout=1):
-    utils.kill_threads(self.thread, timeout)
-    [x.kill(0.2) for x in contextlib.context.get_children(self.ident)]
+  def kill(self, timeout=1.0):
+    assert self.thread != threading.current_thread()
+    for child in contextlib.context.children(self.thread):
+      child.kill(timeout)
+    utils.kill_thread(self.thread, timeout)
     return self
 
   def __repr__(self):
@@ -79,10 +82,8 @@ class Thread:
       compact = traceback.format_tb(e.__traceback__)
       compact = '\n'.join([line.split('\n', 1)[0] for line in compact])
       print(f"Killed thread '{self.name}' at:\n{compact}")
-      [x.kill(0.1) for x in contextlib.context.get_children()]
+      [x.kill(0.1) for x in contextlib.context.children(self.thread)]
       self.excode = 2
     except Exception as e:
-      [x.kill(0.1) for x in contextlib.context.get_children()]
       contextlib.context.error(e, self.name)
-      contextlib.context.shutdown(1)
-      self.excode = 1
+      contextlib.context.shutdown(exitcode=1)

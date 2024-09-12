@@ -117,7 +117,10 @@ class Client:
       message = bytes(data[16:]).decode('utf-8')
       self._seterr(future, RuntimeError(message))
       with self.cond: self.cond.notify_all()
-    self.socket.recv()
+    try:
+      self.socket.recv()
+    except AssertionError:
+      pass  # Socket is already closed.
 
   def _disc(self):
     if self.socket.options.autoconn:

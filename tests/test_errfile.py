@@ -50,7 +50,9 @@ class TestErrfile:
     assert "Error in 'fn1' (ValueError: reason):" == first_line
     assert not worker1.running
     assert not worker2.running
-    assert worker1.exitcode == 1
+    # The first worker may shut itself down or be shut down based on its own
+    # error file watcher, based on how the threads context-switch.
+    assert worker1.exitcode in (1, 2)
     assert worker2.exitcode == 2
 
   @pytest.mark.parametrize('repeat', range(3))

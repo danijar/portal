@@ -1,14 +1,14 @@
-import collections
 import multiprocessing as mp
 import os
 import pathlib
+import signal
 import sys
 import threading
 import traceback
 
 import cloudpickle
-import psutil
 
+from . import process
 from . import utils
 
 
@@ -23,7 +23,6 @@ class Context:
     self.serverkw = {}
     self.done = threading.Event()
     self.watcher = None
-    self.children = collections.defaultdict(list)
     self.mp = mp.get_context()
     self.printlock = self.mp.Lock()
 
@@ -123,27 +122,32 @@ class Context:
       print(f'Wrote errorfile: {self.errfile}', file=sys.stderr)
 
   def shutdown(self, exitcode):
-    # This kills the process tree forcefully to prevent hangs but results in
-    # leaked semaphore warnings. However, the leaked objects are still cleaned
-    # up by the resource tracker process of Python's multiprocessing module.
-    utils.kill_procs(psutil.Process().children(recursive=True))
-    os._exit(exitcode)
+    if exitcode == 0:
+      for child in self.children(threading.main_thread()):
+        child.kill()
+      os._exit(0)
+    else:
+      os._exit(exitcode)
 
   def close(self):
     self.done.set()
     if self.watcher:
       self.watcher.join()
 
-  def add_child(self, worker):
-    ident = threading.get_ident()
-    if hasattr(worker, 'ident'):
-      assert worker.ident != ident
-    self.children[ident].append(worker)
+  def add_worker(self, worker):
+    assert hasattr(worker, 'kill')
+    current = threading.current_thread()
+    if current == threading.main_thread():
+      return
+    if hasattr(worker, 'thread'):
+      assert current != worker.thread
+    current.children.append(worker)
 
-  def get_children(self, ident=None):
-    if ident is None:
-      ident = threading.get_ident()
-    return self.children[ident]
+  def children(self, thread):
+    current = thread or threading.current_thread()
+    if current == threading.main_thread():
+      return []
+    return current.children
 
   def _watcher(self):
     while not self.done.wait(self.interval):

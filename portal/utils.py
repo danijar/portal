@@ -4,7 +4,6 @@ import sys
 import threading
 import time
 
-import numpy as np
 import psutil
 
 
@@ -30,9 +29,8 @@ def run(workers, duration=None):
       raise RuntimeError(f"'{name}' crashed with exit code {code}")
 
 
-def kill_threads(threads, timeout=3):
+def kill_thread(threads, timeout=1):
   threads = threads if isinstance(threads, (list, tuple)) else [threads]
-  threads = [x for x in threads if x is not threading.main_thread()]
   for thread in threads:
     if thread.native_id is None:
       # Wait because thread may currently be starting.
@@ -52,7 +50,7 @@ def kill_threads(threads, timeout=3):
       print('Killed thread is still alive.')
 
 
-def kill_procs(procs, timeout=3):
+def kill_proc(procs, timeout=1):
   def eachproc(fn, procs):
     result = []
     for proc in list(procs):
@@ -76,6 +74,7 @@ def kill_procs(procs, timeout=3):
   eachproc(lambda p: (
       print('Killed subprocess is still alive.')
       if p.status() != psutil.STATUS_ZOMBIE else None), procs)
+
 
 
 def free_port():

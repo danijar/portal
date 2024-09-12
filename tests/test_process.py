@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -48,21 +49,26 @@ class TestProcess:
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subproc(self, repeat):
     ready = portal.context.mp.Semaphore(0)
-    def outer(ready):
-      portal.Process(inner, ready, start=True)
+    queue = portal.context.mp.Queue()
+    def outer(ready, queue):
+      queue.put(os.getpid())
+      portal.Process(inner, ready, queue, start=True)
       ready.release()
       while True:
         time.sleep(0.1)
-    def inner(ready):
+    def inner(ready, queue):
+      queue.put(os.getpid())
       ready.release()
       while True:
         time.sleep(0.1)
-    worker = portal.Process(outer, ready, start=True)
+    worker = portal.Process(outer, ready, queue, start=True)
     ready.acquire()
     ready.acquire()
     worker.kill()
     assert not worker.running
     assert worker.exitcode < 0
+    assert not alive(queue.get())
+    assert not alive(queue.get())
 
   @pytest.mark.parametrize('repeat', range(5))
   def test_kill_with_subthread(self, repeat):
@@ -97,3 +103,12 @@ class TestProcess:
     ready.wait()
     assert ready.is_set()
     portal.context.initfns.clear()
+
+
+def alive(pid):
+  try:
+    os.kill(pid, 0)
+  except OSError:
+    assert True
+  else:
+    assert False
