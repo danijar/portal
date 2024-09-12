@@ -1,3 +1,4 @@
+import os
 import pathlib
 import time
 
@@ -58,31 +59,64 @@ class TestErrfile:
   @pytest.mark.parametrize('repeat', range(3))
   def test_nested_procs(self, tmpdir, repeat):
     errfile = pathlib.Path(tmpdir) / 'error'
-    ready = portal.context.mp.Semaphore(0)
+    ready = portal.context.mp.Barrier(7)
+    queue = portal.context.mp.Queue()
 
-    def hang():
+    def outer(ready, queue, errfile):
+      portal.setup(errfile=errfile, interval=0.1)
+      portal.Process(inner, ready, queue, name='inner', start=True)
+      portal.Thread(hang_thread, ready, start=True)
+      portal.Process(hang_process, ready, queue, start=True)
+      queue.put(os.getpid())
+      queue.close()
+      queue.join_thread()
+      ready.wait()  # 1
       while True:
         time.sleep(0.1)
 
-    def outer(ready, errfile):
-      portal.setup(errfile=errfile, interval=0.1)
-      portal.Process(inner, ready, errfile, name='inner', start=True)
-      portal.Thread(hang, start=True)
-      portal.Process(hang, start=True)
-      ready.release()
-      hang()
-
-    def inner(ready, errfile):
-      portal.setup(errfile=errfile, interval=0.1)
-      portal.Thread(hang, start=True)
-      portal.Process(hang, start=True)
-      ready.release()
+    def inner(ready, queue):
+      assert portal.context.errfile
+      portal.Thread(hang_thread, ready, start=True)
+      portal.Process(hang_process, ready, queue, start=True)
+      queue.put(os.getpid())
+      queue.close()
+      queue.join_thread()
+      ready.wait()  # 2
       raise ValueError('reason')
 
-    worker = portal.Process(outer, ready, errfile, name='outer', start=True)
-    ready.acquire()
-    ready.acquire()
+    def hang_thread(ready):
+      ready.wait()  # 3, 4
+      while True:
+        time.sleep(0.1)
+
+    def hang_process(ready, queue):
+      assert portal.context.errfile
+      queue.put(os.getpid())
+      queue.close()
+      queue.join_thread()
+      ready.wait()  # 5, 6
+      while True:
+        time.sleep(0.1)
+
+    worker = portal.Process(
+        outer, ready, queue, errfile, name='outer', start=True)
+    ready.wait()  # 7
     worker.join()
     content = errfile.read_text()
     assert "Error in 'inner' (ValueError: reason):" == content.split('\n')[0]
     assert not worker.running
+    pids = [queue.get() for _ in range(4)]
+    time.sleep(2.0)  # On some systems this can take a while.
+    assert not alive(pids[0])
+    assert not alive(pids[1])
+    assert not alive(pids[2])
+    assert not alive(pids[3])
+
+
+def alive(pid):
+  try:
+    os.kill(pid, 0)
+  except OSError:
+    assert True
+  else:
+    assert False

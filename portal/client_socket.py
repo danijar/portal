@@ -64,7 +64,6 @@ class ClientSocket:
     return self.isconn.is_set()
 
   def connect(self, timeout=None):
-    assert not self.connected
     if not self.options.autoconn:
       self.wantconn.set()
     return self.isconn.wait(timeout)
