@@ -1,6 +1,6 @@
 name: portal
 on:
-  push: { branches: [main] }
+  push: { branches: [main, testing] }
   pull_request: { branches: [main] }
 jobs:
   build:
