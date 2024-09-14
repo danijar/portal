@@ -8,6 +8,8 @@ import time
 
 import psutil
 
+from . import contextlib
+
 
 def run(workers, duration=None):
   [None if x.started else x.start() for x in workers]
@@ -96,9 +98,13 @@ def free_port():
   # Return a port that is currently free. This function is not thread or
   # process safe, because there is no way to guarantee that the port will still
   # be free at the time it will be used.
-  sock = socket.socket()
+  if contextlib.context.serverkw.get('ipv6', False):
+    family, addr = socket.AF_INET6, ('localhost', 0, 0, 0)
+  else:
+    family, addr = socket.AF_INET, ('localhost', 0)
+  sock = socket.socket(family, socket.SOCK_STREAM)
   sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-  sock.bind(('localhost', 0))
+  sock.bind(addr)
   port = sock.getsockname()[1]
   sock.close()
   return port
