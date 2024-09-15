@@ -186,8 +186,8 @@ class ClientSocket:
       host, port = self.addr
       if contextlib.context.resolver:
         host, port = contextlib.context.resolver((host, port))
-      assert isinstance(host, str), (host, port)
-      assert isinstance(port, int), (host, port)
+        assert isinstance(host, str), (host, port)
+      port = int(port)
       addr = (host, port, 0, 0) if self.options.ipv6 else (host, port)
       sock = self._create()
       error = None
