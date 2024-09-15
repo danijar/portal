@@ -34,11 +34,11 @@ class Options:
 class ClientSocket:
 
   def __init__(self, host, port=None, name='Client', start=True, **kwargs):
-    assert (port or ':' in host) and '://' not in host, host
+    assert port or ':' in host, (host, port)
+    assert '://' not in host, (host, port)
     if port is None:
       host, port = host.rsplit(':', 1)
-      port = int(port)
-      assert host, host
+      assert host and port, (host, port)
     self.addr = (host, port)
     self.name = name
     self.options = Options(**{**contextlib.context.clientkw, **kwargs})
@@ -179,16 +179,19 @@ class ClientSocket:
       sock.close()
 
   def _connect(self):
-    host, port = self.addr
-    self._log(f'Connecting to {host}:{port}')
+    self._log(f'Connecting to {self.addr[0]}:{self.addr[1]}')
     once = True
     while self.running:
-      sock, addr = self._create()
+      # We need to resolve the address regularly.
+      host, port = self.addr
+      if contextlib.context.resolver:
+        host, port = contextlib.context.resolver((host, port))
+      assert isinstance(host, str), (host, port)
+      assert isinstance(port, int), (host, port)
+      addr = (host, port, 0, 0) if self.options.ipv6 else (host, port)
+      sock = self._create()
       error = None
       try:
-        # We need to resolve the address regularly.
-        if contextlib.context.resolver:
-          addr = contextlib.context.resolver(addr)
         sock.settimeout(10)
         sock.connect(addr)
         sock.settimeout(0)
@@ -210,10 +213,8 @@ class ClientSocket:
   def _create(self):
     if self.options.ipv6:
       sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-      addr = (*self.addr, 0, 0)
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      addr = self.addr
     # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     after = self.options.keepalive_after
     every = self.options.keepalive_every
@@ -231,7 +232,7 @@ class ClientSocket:
       sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
     if sys.platform == 'win32':
       sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
-    return sock, addr
+    return sock
 
   def _log(self, *args):
     if not self.options.logging:

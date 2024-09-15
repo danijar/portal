@@ -321,3 +321,20 @@ class TestClient:
         portal.Thread(server),
         portal.Thread(client),
     ])
+
+  def test_resolver(self):
+    portnum = portal.free_port()
+
+    def client(portnum):
+      def resolver(host, portstr):
+        assert portstr == 'name'
+        return host, portnum
+      portal.setup(resolver=resolver)
+      client = portal.Client('localhost:name')
+      assert client.fn(42).result() == 42
+
+    server = portal.Server(portnum)
+    server.bind('fn', lambda x: x)
+    server.start(block=False)
+    portal.Process(client, portnum, start=True).join()
+    server.close()
