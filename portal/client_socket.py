@@ -203,11 +203,11 @@ class ClientSocket:
         error = e
       except socket.gaierror as e:
         error = e
-      time.sleep(0.1)
       if once:
         self._log(f'Still trying to connect... ({error})')
         once = False
       sock.close()
+      time.sleep(0.1)
     return None
 
   def _create(self):

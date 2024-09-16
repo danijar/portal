@@ -42,10 +42,10 @@ class ServerSocket:
     self.options = Options(**{**contextlib.context.serverkw, **kwargs})
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-      self.addr = (self.options.host, port, 0, 0)
+      self.addr = (self.options.host or '::', port, 0, 0)
     else:
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      self.addr = (self.options.host, port)
+      self.addr = (self.options.host or '0.0.0.0', port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     # self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     self._log(f'Binding to {self.addr[0]}:{self.addr[1]}')
