@@ -24,7 +24,7 @@ class TestServer:
       return 2 * x
     server.bind('fn', fn)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     future = client.call('fn', 42)
     assert future.result() == 84
     client.close()
@@ -39,7 +39,7 @@ class TestServer:
     server = Server(port)
     server.bind('fn', fn)
     with server:
-      client = portal.Client('localhost', port)
+      client = portal.Client(port)
       future = client.fn({'foo': np.array(1)})
       result = future.result()
       assert result['foo'] == 2
@@ -51,7 +51,7 @@ class TestServer:
     server = Server(port)
     server.bind('fn', lambda data: data)
     server.start(block=False)
-    clients = [portal.Client('localhost', port) for _ in range(10)]
+    clients = [portal.Client(port) for _ in range(10)]
     futures = [client.fn(i) for i, client in enumerate(clients)]
     results = [future.result() for future in futures]
     assert results == list(range(10))
@@ -65,7 +65,7 @@ class TestServer:
     server.bind('add', lambda x, y: x + y)
     server.bind('sub', lambda x, y: x - y)
     with server:
-      client = portal.Client('localhost', port)
+      client = portal.Client(port)
       assert client.add(3, 5).result() == 8
       assert client.sub(3, 5).result() == -2
       client.close()
@@ -76,7 +76,7 @@ class TestServer:
     server = Server(port, errors=False)
     server.bind('foo', lambda x: x)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     future = client.bar(42)
     try:
       future.result()
@@ -99,7 +99,7 @@ class TestServer:
     server.bind('fn', fn)
     server.start(block=False)
 
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     assert client.fn(1).result() == 1
     with pytest.raises(RuntimeError):
       client.fn(2).result()
@@ -108,8 +108,9 @@ class TestServer:
     client.close()
     server.close()
 
+  @pytest.mark.parametrize('repeat', range(3))
   @pytest.mark.parametrize('Server', SERVERS)
-  def test_server_errors_raise(self, Server):
+  def test_server_errors_raise(self, repeat, Server):
     port = portal.free_port()
 
     def server(port):
@@ -126,7 +127,7 @@ class TestServer:
     server = portal.Process(server, port, start=True)
     del os.environ['PYTHONWARNINGS']
 
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     assert client.fn(1).result() == 1
     assert server.running
     with pytest.raises((RuntimeError, TimeoutError)):
@@ -155,7 +156,7 @@ class TestServer:
     server = Server(port, workers=4)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     futures = [client.fn(x) for x in range(10)]
     results = [x.result() for x in futures]
     server.close()
@@ -188,7 +189,7 @@ class TestServer:
     server = Server(port, workers=workers)
     server.bind('fn', workfn, postfn)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     futures = [client.fn(i) for i in range(20)]
     [future.result() for future in futures]
     client.close()
@@ -210,7 +211,7 @@ class TestServer:
     server.bind('slow', slow)
     server.bind('fast', fast)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     slow_future = client.slow(0)
     fast_future = client.fast(0)
     assert not slow_future.done()
@@ -237,7 +238,7 @@ class TestServer:
     server.bind('slow', slow, workers=1)
     server.bind('fast', fast, workers=1)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     slow_future = client.slow(0)
     fast_future = client.fast(0)
     # Both requests are processed in parallel, so the fast request returns
@@ -258,12 +259,12 @@ class TestServer:
     server.start(block=False)
 
     kwargs = dict(name='ProxyClient', maxinflight=4)
-    proxy_client = portal.Client('localhost', inner_port, **kwargs)
+    proxy_client = portal.Client(inner_port, **kwargs)
     proxy_server = Server(outer_port, 'ProxyServer', workers=workers)
     proxy_server.bind('fn2', lambda x: proxy_client.fn(x).result())
     proxy_server.start(block=False)
 
-    client = portal.Client('localhost', outer_port, 'OuterClient')
+    client = portal.Client(outer_port, 'OuterClient')
     futures = [client.fn2(x) for x in range(20)]
     results = [future.result() for future in futures]
     assert results == list(range(0, 40, 2))
@@ -291,7 +292,7 @@ class TestServer:
     def client(port):
       data = portal.SharedArray((3, 2), np.float32)
       data.array[:] = np.arange(6, dtype=np.float32).reshape(3, 2)
-      client = portal.Client('localhost', port)
+      client = portal.Client(port)
       result = client.call('fn', data).result()
       assert result.name == data.name
       assert result, data
@@ -320,7 +321,7 @@ class TestServer:
     server.bind('fn', fn)
     server.start(block=False)
 
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     client.fn(1)
     barrier.wait()
     client.close()
@@ -328,7 +329,25 @@ class TestServer:
     assert stats['numrecv'] == 1
     assert stats['numsend'] == 0
 
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     assert client.fn(2).result() == 2
+    client.close()
+    server.close()
+
+  @pytest.mark.parametrize('ipv6', (False, True))
+  @pytest.mark.parametrize('fmt,typ', (
+      ('{port}', int),
+      ('{port}', str),
+      (':{port}', str),
+      ('localhost:{port}', str),
+      ('123.456:789:::{port}', str),
+  ))
+  def test_port_formats(self, fmt, typ, ipv6):
+    port = portal.free_port()
+    server = portal.Server(typ(fmt.format(port=port)), ipv6=ipv6)
+    server.bind('fn', lambda x: x)
+    server.start(block=False)
+    client = portal.Client(port, ipv6=ipv6)
+    assert client.fn(42).result() == 42
     client.close()
     server.close()

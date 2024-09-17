@@ -23,7 +23,7 @@ class TestBatching:
       return 2 * x
     server.bind('fn', fn, batch=4)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     futures = [client.fn(x) for x in range(8)]
     results = [x.result() for x in futures]
     assert (results == 2 * np.arange(8)).all()
@@ -38,7 +38,7 @@ class TestBatching:
       return 2 * x
     server.bind('fn', fn, batch=4)
     server.start(block=False)
-    clients = [portal.Client('localhost', port) for _ in range(8)]
+    clients = [portal.Client(port) for _ in range(8)]
     futures = [x.fn(i) for i, x in enumerate(clients)]
     results = [x.result() for x in futures]
     assert (results == 2 * np.arange(8)).all()
@@ -53,7 +53,7 @@ class TestBatching:
       return 2 * x
     server.bind('fn', fn, workers=4, batch=4)
     server.start(block=False)
-    clients = [portal.Client('localhost', port) for _ in range(32)]
+    clients = [portal.Client(port) for _ in range(32)]
     futures = [x.fn(i) for i, x in enumerate(clients)]
     results = [x.result() for x in futures]
     assert (results == 2 * np.arange(32)).all()
@@ -70,14 +70,14 @@ class TestBatching:
     server.start(block=False)
 
     kwargs = dict(name='ProxyClient', maxinflight=4)
-    proxy_client = portal.Client('localhost', inner_port, **kwargs)
+    proxy_client = portal.Client(inner_port, **kwargs)
     proxy_server = portal.BatchServer(
         outer_port, 'ProxyServer', workers=workers)
     proxy_server.bind(
         'fn2', lambda x: proxy_client.fn(x).result(), batch=2)
     proxy_server.start(block=False)
 
-    client = portal.Client('localhost', outer_port, 'OuterClient')
+    client = portal.Client(outer_port, 'OuterClient')
     futures = [client.fn2(x) for x in range(16)]
     results = [future.result() for future in futures]
     assert (results == 2 * np.arange(16)).all()
@@ -102,7 +102,7 @@ class TestBatching:
     server = portal.BatchServer(port)
     server.bind('fn', lambda x: x, batch=4)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     futures = [client.fn(data) for _ in range(4)]
     results = [x.result() for x in futures]
     for result in results:
@@ -116,7 +116,7 @@ class TestBatching:
     server = portal.BatchServer(port, errors=False)
     server.bind('fn', lambda x: x, batch=2)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     future1 = client.fn({'a': np.array(12)})
     future2 = client.fn(42)
     with pytest.raises(RuntimeError):
@@ -133,12 +133,12 @@ class TestBatching:
     server = portal.BatchServer(port)
     server.bind('fn', lambda x: 2 * x, batch=4)
     server.start(block=False)
-    client = portal.Client('localhost', port, name='Client1', autoconn=False)
+    client = portal.Client(port, 'Client1', autoconn=False)
     client.connect()
     future1 = client.fn(1)
     future2 = client.fn(2)
     client.close()
-    client = portal.Client('localhost', port, name='Client2')
+    client = portal.Client(port, 'Client2')
     future3 = client.fn(3)
     future4 = client.fn(4)
     with pytest.raises(portal.Disconnected):
@@ -156,7 +156,7 @@ class TestBatching:
     server = portal.BatchServer(port)
     server.bind('fn', lambda x: 2 * x, batch=2)
     server.start(block=False)
-    client = portal.Client('localhost', port, autoconn=False)
+    client = portal.Client(port, autoconn=False)
     client.connect()
     future1 = client.fn(1)
     server.close()

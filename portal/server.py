@@ -47,12 +47,13 @@ class Server:
     if block:
       self.loop.join(timeout=None)
 
-  def close(self, timeout=None):
+  def close(self, timeout=None, internal=False):
     assert self.running
     self.socket.shutdown()
     self.running = False
-    self.loop.join(timeout)
-    self.loop.kill()
+    if not internal:
+      self.loop.join(timeout)
+      self.loop.kill()
     [x.close() for x in self.pools]
     self.socket.close()
 
@@ -149,6 +150,5 @@ class Server:
     self.socket.send(addr, reqnum, status, data)
     if self.errors:
       # Wait until the error is delivered to the client and then raise.
-      self.socket.shutdown()
-      self.socket.close()
+      self.close(internal=True)
       raise RuntimeError(message)

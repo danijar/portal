@@ -6,15 +6,16 @@ import portal
 
 class TestSocket:
 
-  def test_basic(self):
+  @pytest.mark.parametrize('ipv6', (False, True))
+  def test_basic(self, ipv6):
     port = portal.free_port()
-    server = portal.ServerSocket(port)
-    client = portal.ClientSocket('localhost', port)
+    server = portal.ServerSocket(port, ipv6=ipv6)
+    client = portal.ClientSocket(port, ipv6=ipv6)
     client.connect()
     assert client.connected
     client.send(b'foo')
     addr, data = server.recv()
-    assert addr[0] == '127.0.0.1'
+    assert addr[0] == '::1' if ipv6 else '127.0.0.1'
     assert data == b'foo'
     server.send(addr, b'bar')
     assert client.recv() == b'bar'
@@ -24,7 +25,7 @@ class TestSocket:
   def test_multi_buffer(self):
     port = portal.free_port()
     server = portal.ServerSocket(port)
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     client.send(b'foo', b'bar', b'baz')
     addr, data = server.recv()
     assert data == b'foobarbaz'
@@ -36,7 +37,7 @@ class TestSocket:
   def test_multiple_send(self):
     port = portal.free_port()
     server = portal.ServerSocket(port)
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     client.send(b'foo')
     client.send(b'ba', b'r')
     client.send(b'baz')
@@ -58,7 +59,7 @@ class TestSocket:
   def test_disconnect_server(self, repeat):
     port = portal.free_port()
     server = portal.ServerSocket(port)
-    client = portal.ClientSocket('localhost', port, autoconn=False)
+    client = portal.ClientSocket(port, autoconn=False)
     client.connect()
     server.close()
     with pytest.raises(portal.Disconnected):
@@ -79,14 +80,14 @@ class TestSocket:
   def test_disconnect_client(self, repeat):
     port = portal.free_port()
     server = portal.ServerSocket(port)
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     client.send(b'foo')
     assert server.recv()[1] == b'foo'
     assert len(server.connections) == 1
     client.close()
     time.sleep(0.2)
     assert len(server.connections) == 0
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     time.sleep(0.2)
     assert len(server.connections) == 1
     server.close()
@@ -107,7 +108,7 @@ class TestSocket:
 
     def client_fn(port, q):
       client = portal.ClientSocket(
-          'localhost', port,
+          port,
           autoconn=False,
           keepalive_after=1,
           keepalive_every=1,
@@ -154,7 +155,7 @@ class TestSocket:
 
     def client(port):
       data = bytearray(size)
-      client = portal.ClientSocket('localhost', port)
+      client = portal.ClientSocket(port)
       for _ in range(prefetch):
         client.send(data)
       for _ in range(100):
@@ -184,7 +185,7 @@ class TestSocket:
      server.close()
 
    def client(port):
-     client = portal.ClientSocket('localhost', port)
+     client = portal.ClientSocket(port)
      client.send(b'foo')
      assert client.recv() == bytes(1024 ** 2)
      client.close()

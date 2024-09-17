@@ -29,19 +29,19 @@ class Options:
   keepalive_fails: int = 10
   logging: bool = True
   logging_color: str = 'yellow'
+  connect_wait: float = 0.1
 
 
 class ClientSocket:
 
-  def __init__(self, host, port=None, name='Client', start=True, **kwargs):
-    assert port or ':' in host, (host, port)
-    assert '://' not in host, (host, port)
-    if port is None:
-      host, port = host.rsplit(':', 1)
-      assert host and port, (host, port)
-    self.addr = (host, port)
+  def __init__(self, addr, name='Client', start=True, **kwargs):
+    addr = str(addr)
+    assert '://' not in addr, addr
+    host, port = addr.rsplit(':', 1) if ':' in addr else ('', addr)
     self.name = name
     self.options = Options(**{**contextlib.context.clientkw, **kwargs})
+    host = host or ('::1' if self.options.ipv6 else '127.0.0.1')
+    self.addr = (host, port)
 
     self.callbacks_recv = []
     self.callbacks_conn = []
@@ -190,6 +190,7 @@ class ClientSocket:
       port = int(port)
       addr = (host, port, 0, 0) if self.options.ipv6 else (host, port)
       sock = self._create()
+      start = time.time()
       error = None
       try:
         sock.settimeout(10)
@@ -207,7 +208,7 @@ class ClientSocket:
         self._log(f'Still trying to connect... ({error})')
         once = False
       sock.close()
-      time.sleep(0.1)
+      time.sleep(self.options.connect_wait)
     return None
 
   def _create(self):
@@ -216,22 +217,25 @@ class ClientSocket:
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
     after = self.options.keepalive_after
     every = self.options.keepalive_every
     fails = self.options.keepalive_fails
-    if sys.platform == 'linux':
-      sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
-      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
-      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
-      sock.setsockopt(
-          socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT,
-          1000 * (after + every * fails))
-    if sys.platform == 'darwin':
-      sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-      sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
-    if sys.platform == 'win32':
-      sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
+    if after and every and fails:
+      if sys.platform == 'linux':
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
+        sock.setsockopt(
+            socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT,
+            1000 * (after + every * fails))
+      if sys.platform == 'darwin':
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
+      if sys.platform == 'win32':
+        sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
+
     return sock
 
   def _log(self, *args):

@@ -11,8 +11,7 @@ from . import packlib
 
 class Client:
 
-  def __init__(
-      self, host, port=None, name='Client', maxinflight=16, **kwargs):
+  def __init__(self, addr, name='Client', maxinflight=16, **kwargs):
     assert 1 <= maxinflight, maxinflight
     self.maxinflight = maxinflight
     self.reqnum = iter(itertools.count(0))
@@ -25,8 +24,7 @@ class Client:
     self.lock = threading.Lock()
     # Socket is created after the above attributes because the callbacks access
     # some of the attributes.
-    self.socket = client_socket.ClientSocket(
-        host, port, name, start=False, **kwargs)
+    self.socket = client_socket.ClientSocket(addr, name, start=False, **kwargs)
     self.socket.callbacks_recv.append(self._recv)
     self.socket.callbacks_disc.append(self._disc)
     self.socket.callbacks_conn.append(self._conn)

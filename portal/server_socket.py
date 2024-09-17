@@ -37,7 +37,8 @@ class ServerSocket:
 
   def __init__(self, port, name='Server', **kwargs):
     if isinstance(port, str):
-      port = int(port.rsplit(':', 1)[1])
+      assert '://' not in port, port
+      port = int(port.rsplit(':', 1)[-1])
     self.name = name
     self.options = Options(**{**contextlib.context.serverkw, **kwargs})
     if self.options.ipv6:

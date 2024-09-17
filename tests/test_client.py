@@ -20,14 +20,14 @@ class TestClient:
       pass
     server.bind('fn', fn)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     assert client.fn().result() is None
     client.close()
     server.close()
 
   def test_manual_connect(self):
     port = portal.free_port()
-    client = portal.Client('localhost', port, autoconn=False)
+    client = portal.Client(port, autoconn=False)
     assert not client.connected
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
@@ -44,7 +44,7 @@ class TestClient:
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = portal.Client('localhost', port, autoconn=False)
+    client = portal.Client(port, autoconn=False)
     client.connect()
     assert client.fn(1).result() == 1
     server.close()
@@ -77,7 +77,7 @@ class TestClient:
     results = []
 
     def client():
-      client = portal.Client('localhost', port)
+      client = portal.Client(port)
       results.append(client.fn(12).result())
       client.close()
 
@@ -95,7 +95,7 @@ class TestClient:
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     future1 = client.fn(1)
     future2 = client.fn(2)
     future3 = client.fn(3)
@@ -113,7 +113,7 @@ class TestClient:
       return x
     server.bind('fn', fn)
     server.start(block=False)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     future = client.fn(42)
     with pytest.raises(TimeoutError):
       future.result(timeout=0)
@@ -142,7 +142,7 @@ class TestClient:
     server.bind('fn', fn, workers=4)
     server.start(block=False)
 
-    client = portal.Client('localhost', port, maxinflight=2)
+    client = portal.Client(port, maxinflight=2)
     futures = [client.fn(i) for i in range(16)]
     results = [x.result() for x in futures]
     assert results == list(range(16))
@@ -155,7 +155,7 @@ class TestClient:
     server = portal.Server(port)
     server.bind('fn', lambda x: x)
     server.start(block=False)
-    client = portal.Client('localhost', port, maxinflight=1)
+    client = portal.Client(port, maxinflight=1)
     client.fn(1)
     client.fn(2)
     future3 = client.fn(3)
@@ -175,7 +175,7 @@ class TestClient:
       return x
     server.bind('fn', fn)
     server.start(block=False)
-    client = portal.Client('localhost', port, maxinflight=1)
+    client = portal.Client(port, maxinflight=1)
     client.fn(1)
     client.fn(2)
     time.sleep(0.2)
@@ -191,7 +191,7 @@ class TestClient:
     server = portal.Server(port)
     server.bind('fn', lambda x: x, workers=4)
     server.start(block=False)
-    client = portal.Client('localhost', port, maxinflight=8)
+    client = portal.Client(port, maxinflight=8)
     barrier = threading.Barrier(users)
 
     def user():
@@ -228,7 +228,7 @@ class TestClient:
       server.close()
 
     def client():
-      client = portal.Client('localhost', port, maxinflight=2)
+      client = portal.Client(port, maxinflight=2)
       futures = [client.fn(x) for x in range(5)]
       results = [x.result() for x in futures]
       assert results == list(range(5))
@@ -265,8 +265,7 @@ class TestClient:
       server.close()
 
     def client():
-      client = portal.Client(
-          'localhost', port, maxinflight=1, autoconn=True)
+      client = portal.Client(port, maxinflight=1, autoconn=True)
       assert client.fn(1).result() == 1
       a.wait()
       b.wait()
@@ -304,8 +303,7 @@ class TestClient:
       server.close()
 
     def client():
-      client = portal.Client(
-          'localhost', port, maxinflight=1, autoconn=False)
+      client = portal.Client(port, maxinflight=1, autoconn=False)
       client.connect()
       assert client.fn(1).result() == 1
       a.wait()
@@ -321,6 +319,26 @@ class TestClient:
         portal.Thread(server),
         portal.Thread(client),
     ])
+
+  @pytest.mark.parametrize('ipv6', (False, True))
+  @pytest.mark.parametrize('fmt,typ', (
+      ('{port}', int),
+      ('{port}', str),
+      (':{port}', str),
+      ('localhost:{port}', str),
+      ('{localhost}:{port}', str),
+  ))
+  def test_address_formats(self, fmt, typ, ipv6):
+    port = portal.free_port()
+    server = portal.Server(port, ipv6=ipv6)
+    server.bind('fn', lambda x: x)
+    server.start(block=False)
+    localhost = '::1' if ipv6 else '127.0.0.1'
+    addr = typ(fmt.format(port=port, localhost=localhost))
+    client = portal.Client(addr, ipv6=ipv6)
+    assert client.fn(42).result() == 42
+    client.close()
+    server.close()
 
   def test_resolver(self):
     portnum = portal.free_port()

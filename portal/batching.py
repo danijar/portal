@@ -162,7 +162,7 @@ def batcher(
 
   try:
     outer = server_socket.ServerSocket(outer_port, f'{name}Server', **kwargs)
-    inner = client.Client('localhost', inner_port, f'{name}Client', **kwargs)
+    inner = client.Client(inner_port, f'{name}Client', **kwargs)
     batches = {}  # {method: ([addr], [reqnum], structure, [array])}
     jobs = []
     shutdown = False
