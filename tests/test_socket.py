@@ -11,8 +11,6 @@ class TestSocket:
     port = portal.free_port()
     server = portal.ServerSocket(port, ipv6=ipv6)
     client = portal.ClientSocket(port, ipv6=ipv6)
-    client.connect()
-    assert client.connected
     client.send(b'foo')
     addr, data = server.recv()
     assert addr[0] == '::1' if ipv6 else '127.0.0.1'

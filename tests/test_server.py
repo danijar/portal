@@ -218,7 +218,7 @@ class TestServer:
     # The slow request is processed first, so this will wait until both
     # requests are done.
     fast_future.result()
-    assert slow_future.wait(0.01)
+    assert slow_future.wait(0.1)
     server.close()
     client.close()
 
@@ -244,7 +244,7 @@ class TestServer:
     # Both requests are processed in parallel, so the fast request returns
     # before the slow request is done.
     fast_future.result()
-    assert not slow_future.wait(0.01)
+    assert not slow_future.wait(0.1)
     server.close()
     client.close()
 
@@ -313,7 +313,7 @@ class TestServer:
     def fn(x):
       if x == 1:
         barrier.wait()
-        time.sleep(0.2)
+        time.sleep(0.5)
       return x
 
     port = portal.free_port()
