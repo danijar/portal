@@ -124,14 +124,16 @@ class Server:
           data = job.result()
           if job.postfn:
             data, info = data
-          else:
-            job.active.release()
+            del info
           data = packlib.pack(data)
           status = int(0).to_bytes(8, 'little', signed=False)
           self.socket.send(job.addr, job.reqnum, status, *data)
           self.metrics['send'] += 1
         except Exception as e:
           self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
+        finally:
+          if not job.postfn:
+            job.active.release()
       if completed:
         while self.postfn_inp and self.postfn_inp[0].done():
           job = self.postfn_inp.popleft()

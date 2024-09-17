@@ -21,10 +21,13 @@ class Context:
     self.interval = 20
     self.clientkw = {}
     self.serverkw = {}
+    self.printlock = threading.Lock()
     self.done = threading.Event()
     self.watcher = None
-    self.mp = mp.get_context()
-    self.printlock = self.mp.Lock()
+
+  @property
+  def mp(self):
+    return mp.get_context('spawn')
 
   def options(self):
     return {

@@ -43,16 +43,17 @@ class ServerSocket:
     self.options = Options(**{**contextlib.context.serverkw, **kwargs})
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+      self.sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
       self.addr = (self.options.host or '::', port, 0, 0)
     else:
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.addr = (self.options.host or '0.0.0.0', port)
     self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    # self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # TODO
     self._log(f'Binding to {self.addr[0]}:{self.addr[1]}')
     self.sock.bind(self.addr)
     self.sock.setblocking(False)
-    self.sock.listen()
+    self.sock.listen(8192)
     self.sel = selectors.DefaultSelector()
     self.sel.register(self.sock, selectors.EVENT_READ, data=None)
     self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')

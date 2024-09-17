@@ -190,7 +190,6 @@ class ClientSocket:
       port = int(port)
       addr = (host, port, 0, 0) if self.options.ipv6 else (host, port)
       sock = self._create()
-      start = time.time()
       error = None
       try:
         sock.settimeout(10)
@@ -214,9 +213,10 @@ class ClientSocket:
   def _create(self):
     if self.options.ipv6:
       sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+      sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
     else:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # TODO
 
     after = self.options.keepalive_after
     every = self.options.keepalive_every
