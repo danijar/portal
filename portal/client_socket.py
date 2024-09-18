@@ -30,6 +30,7 @@ class Options:
   logging: bool = True
   logging_color: str = 'yellow'
   connect_wait: float = 0.1
+  loop_sleep: float = 0.0
 
 
 class ClientSocket:
@@ -174,6 +175,9 @@ class ClientSocket:
         recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
         [x() for x in self.callbacks_disc]
         continue
+
+      if self.options.loop_sleep:
+        time.sleep(self.options.loop_sleep)
 
     if sock:
       sock.close()

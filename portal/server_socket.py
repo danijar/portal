@@ -3,6 +3,7 @@ import dataclasses
 import queue
 import selectors
 import socket
+import time
 
 from . import buffers
 from . import contextlib
@@ -31,6 +32,7 @@ class Options:
   max_send_queue: int = 4096
   logging: bool = True
   logging_color: str = 'blue'
+  loop_sleep: float = 0.0
 
 
 class ServerSocket:
@@ -127,6 +129,8 @@ class ServerSocket:
             # The client is gone but we may have buffered messages left to
             # read, so we keep the socket open until recv() fails.
             pass
+      if self.options.loop_sleep:
+        time.sleep(self.options.loop_sleep)
     except Exception as e:
       self.error = e
 
