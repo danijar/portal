@@ -18,7 +18,7 @@ def main():
 
   def client(port):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     durations = collections.deque(maxlen=10)
     while True:
       start = time.perf_counter()

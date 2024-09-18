@@ -165,6 +165,25 @@ class TestServer:
     assert completed != list(range(10))
     assert logged == list(range(10))
 
+  @pytest.mark.parametrize('repeat', range(10))
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_postfn_no_hang(self, repeat, Server):
+    def wrapper():
+      port = portal.free_port()
+      def workfn(x):
+        return x, x
+      def postfn(x):
+        time.sleep(0.01)
+      server = Server(port, workers=4)
+      server.bind('fn', workfn, postfn)
+      server.start(block=False)
+      client = portal.Client(port)
+      futures = [client.fn(i) for i in range(20)]
+      [future.result() for future in futures]  # Used to hang here.
+      client.close()
+      server.close()
+    assert portal.Thread(wrapper, start=True).join(timeout=10).exitcode == 0
+
   @pytest.mark.parametrize('repeat', range(5))
   @pytest.mark.parametrize('Server', SERVERS)
   @pytest.mark.parametrize('workers', (1, 4))

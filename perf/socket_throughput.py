@@ -24,7 +24,7 @@ def main():
 
   def client(port):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = portal.ClientSocket('localhost', port)
+    client = portal.ClientSocket(port)
     for _ in range(prefetch):
       client.send(*data)
     durations = collections.deque(maxlen=50)

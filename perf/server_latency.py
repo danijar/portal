@@ -18,7 +18,7 @@ def main():
 
   def client(port):
     data = bytearray(size)
-    client = portal.Client('localhost', port)
+    client = portal.Client(port)
     futures = collections.deque()
     durations = collections.deque(maxlen=50)
     while True:

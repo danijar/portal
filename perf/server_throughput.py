@@ -23,7 +23,7 @@ def main():
 
   def client(port):
     data = bytearray(size)
-    client = portal.Client('localhost', port, maxinflight=prefetch + 1)
+    client = portal.Client(port, maxinflight=prefetch + 1)
     futures = collections.deque()
     for _ in range(prefetch):
       futures.append(client.call('foo', data))

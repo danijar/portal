@@ -1,5 +1,4 @@
 import collections
-import queue
 import time
 
 import portal
@@ -28,24 +27,24 @@ def main():
 
   def proxy(port1, port2):
     server = portal.ServerSocket(port2)
-    client = portal.ClientSocket('localhost', port1)
+    client = portal.ClientSocket(port1)
     addrs = collections.deque()
     while True:
       try:
         addr, data = server.recv(timeout=0.0001)
         addrs.append(addr)
         client.send(data)
-      except queue.Empty:
+      except TimeoutError:
         pass
       try:
         data = client.recv(timeout=0.0001)
         server.send(addrs.popleft(), data)
-      except queue.Empty:
+      except TimeoutError:
         pass
 
   def client(port2):
     data = [bytearray(size // parts) for _ in range(parts)]
-    client = portal.ClientSocket('localhost', port2)
+    client = portal.ClientSocket(port2)
     for _ in range(prefetch):
       client.send(*data)
     while True:

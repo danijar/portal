@@ -1,7 +1,7 @@
 import collections
 import concurrent.futures
-import threading
 import time
+import types
 
 from . import packlib
 from . import poollib
@@ -34,11 +34,11 @@ class Server:
       self.pools.append(pool)
     else:
       pool = self.pool
-    active = threading.Semaphore((workers or self.workers) + 1)
-    def workfn2(*args):
-      active.acquire()
-      return workfn(*args)
-    self.methods[name] = (workfn2, postfn, pool, active)
+    requests = collections.deque()
+    available = (workers or self.workers) + 1
+    self.methods[name] = types.SimpleNamespace(
+        workfn=workfn, postfn=postfn, pool=pool,
+        requests=requests, available=available)
 
   def start(self, block=True):
     assert not self.running
@@ -67,9 +67,10 @@ class Server:
         'numrecv': mets['recv'],
         'sendrate': mets['send'] / dur,
         'recvrate': mets['recv'] / dur,
+        'requests': sum(len(m.requests) for m in self.methods.values()),
         'jobs': len(self.jobs),
     }
-    if any(postfn for _, postfn, _, _ in self.methods.values()):
+    if any(method.postfn for method in self.methods.values()):
       stats.update({
           'post_iqueue': len(self.postfn_inp),
           'post_oqueue': len(self.postfn_out),
@@ -84,7 +85,9 @@ class Server:
     self.close()
 
   def _loop(self):
-    while self.running or self.jobs or self.postfn_inp or self.postfn_out:
+    methods = list(self.methods.values())
+    pending = 0
+    while self.running or pending:
       while True:  # Loop syntax used to break on error.
         if not self.running:  # Do not accept further requests.
           break
@@ -107,24 +110,30 @@ class Server:
           self._error(addr, reqnum, 3, f'Unknown method {name}')
           break
         self.metrics['recv'] += 1
-        workfn, postfn, pool, active = self.methods[name]
-        job = pool.submit(workfn, *data)
-        job.active = active
-        job.postfn = postfn
-        job.addr = addr
-        job.reqnum = reqnum
-        self.jobs.add(job)
-        if postfn:
-          self.postfn_inp.append(job)
+        method = self.methods[name]
+        method.requests.append((addr, reqnum, data))
+        pending += 1
         break  # We do not actually want to loop.
+
+      for method in methods:
+        if method.requests and method.available:
+          method.available -= 1
+          addr, reqnum, data = method.requests.popleft()
+          job = method.pool.submit(method.workfn, *data)
+          job.method = method
+          job.addr = addr
+          job.reqnum = reqnum
+          self.jobs.add(job)
+          if method.postfn:
+            self.postfn_inp.append(job)
+
       completed, self.jobs = concurrent.futures.wait(
           self.jobs, 0.0001, concurrent.futures.FIRST_COMPLETED)
       for job in completed:
         try:
           data = job.result()
-          if job.postfn:
-            data, info = data
-            del info
+          if job.method.postfn:
+            data, _ = data
           data = packlib.pack(data)
           status = int(0).to_bytes(8, 'little', signed=False)
           self.socket.send(job.addr, job.reqnum, status, *data)
@@ -132,19 +141,24 @@ class Server:
         except Exception as e:
           self._error(job.addr, job.reqnum, 4, f'Error in server method: {e}')
         finally:
-          if not job.postfn:
-            job.active.release()
+          if not job.method.postfn:
+            job.method.available += 1
+            pending -= 1
+
       if completed:
+        # Call postfns in the order the requests were received.
         while self.postfn_inp and self.postfn_inp[0].done():
           job = self.postfn_inp.popleft()
-          data, info = job.result()
-          postjob = self.postfn_pool.submit(job.postfn, info)
-          postjob.active = job.active
+          _, info = job.result()
+          postjob = self.postfn_pool.submit(job.method.postfn, info)
+          postjob.method = job.method
           self.postfn_out.append(postjob)
+
       while self.postfn_out and self.postfn_out[0].done():
         postjob = self.postfn_out.popleft()
-        postjob.active.release()
         postjob.result()  # Check if there was an error.
+        postjob.method.available += 1
+        pending -= 1
 
   def _error(self, addr, reqnum, status, message):
     status = status.to_bytes(8, 'little', signed=False)
