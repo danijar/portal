@@ -30,7 +30,7 @@ class Options:
   logging: bool = True
   logging_color: str = 'yellow'
   connect_wait: float = 0.1
-  loop_sleep: float = 0.0
+  idle_sleep: float = 0.0001
 
 
 class ClientSocket:
@@ -130,33 +130,36 @@ class ClientSocket:
 
       try:
 
-        # TODO: According to the py-spy profiler, the GIL is held during
-        # polling. Is there a way to avoid that?
+        idle = True
         pairs = poll.poll(0.2)
-        if not pairs:
-          continue
-        _, mask = pairs[0]
+        if pairs:
+          _, mask = pairs[0]
 
-        if mask & select.POLLIN:
-          try:
-            recvbuf.recv(sock)
-            if recvbuf.done():
-              if self.recvq.qsize() > self.options.max_recv_queue:
-                raise RuntimeError('Too many incoming messages enqueued')
-              msg = recvbuf.result()
-              self.recvq.put(msg)
-              [x(msg) for x in self.callbacks_recv]
-              recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-          except BlockingIOError:
-            pass
+          if mask & select.POLLIN:
+            try:
+              recvbuf.recv(sock)
+              idle = False
+              if recvbuf.done():
+                if self.recvq.qsize() > self.options.max_recv_queue:
+                  raise RuntimeError('Too many incoming messages enqueued')
+                msg = recvbuf.result()
+                self.recvq.put(msg)
+                [x(msg) for x in self.callbacks_recv]
+                recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
+            except BlockingIOError:
+              pass
 
-        if self.sendq and mask & select.POLLOUT:
-          try:
-            self.sendq[0].send(sock)
-            if self.sendq[0].done():
-              self.sendq.popleft()
-          except BlockingIOError:
-            pass
+          if self.sendq and mask & select.POLLOUT:
+            try:
+              self.sendq[0].send(sock)
+              idle = False
+              if self.sendq[0].done():
+                self.sendq.popleft()
+            except BlockingIOError:
+              pass
+
+        if idle and self.options.idle_sleep:
+          time.sleep(self.options.idle_sleep)
 
       except OSError as e:
         detail = f'{type(e).__name__}'
@@ -175,9 +178,6 @@ class ClientSocket:
         recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
         [x() for x in self.callbacks_disc]
         continue
-
-      if self.options.loop_sleep:
-        time.sleep(self.options.loop_sleep)
 
     if sock:
       sock.close()

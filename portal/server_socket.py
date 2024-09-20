@@ -32,7 +32,7 @@ class Options:
   max_send_queue: int = 4096
   logging: bool = True
   logging_color: str = 'blue'
-  loop_sleep: float = 0.0
+  idle_sleep: float = 0.0001
 
 
 class ServerSocket:
@@ -105,15 +105,16 @@ class ServerSocket:
   def _loop(self):
     try:
       while self.running or self._numsending():
+        idle = True
         writeable = []
-        # TODO: According to the py-spy profiler, the GIL is held during
-        # polling. Is there a way to avoid that?
         for key, mask in self.sel.select(timeout=0.2):
           if key.data is None and self.reading:
             assert mask & selectors.EVENT_READ
             self._accept(key.fileobj)
+            idle = False
           elif mask & selectors.EVENT_READ and self.reading:
             self._recv(key.data)
+            idle = False
           elif mask & selectors.EVENT_WRITE:
             writeable.append(key.data)
         for conn in writeable:
@@ -121,6 +122,7 @@ class ServerSocket:
             continue
           try:
             conn.sendbufs[0].send(conn.sock)
+            idle = False
             if conn.sendbufs[0].done():
               conn.sendbufs.popleft()
           except BlockingIOError:
@@ -129,8 +131,8 @@ class ServerSocket:
             # The client is gone but we may have buffered messages left to
             # read, so we keep the socket open until recv() fails.
             pass
-      if self.options.loop_sleep:
-        time.sleep(self.options.loop_sleep)
+        if idle and self.options.idle_sleep:
+          time.sleep(self.options.idle_sleep)
     except Exception as e:
       self.error = e
 
