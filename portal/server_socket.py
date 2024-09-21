@@ -1,9 +1,9 @@
 import collections
 import dataclasses
+import os
 import queue
 import selectors
 import socket
-import time
 
 from . import buffers
 from . import contextlib
@@ -32,7 +32,6 @@ class Options:
   max_send_queue: int = 4096
   logging: bool = True
   logging_color: str = 'blue'
-  idle_sleep: float = 0.0001
 
 
 class ServerSocket:
@@ -56,7 +55,9 @@ class ServerSocket:
     self.sock.bind(self.addr)
     self.sock.setblocking(False)
     self.sock.listen(8192)
+    self.get_signal, self.set_signal = os.pipe()
     self.sel = selectors.DefaultSelector()
+    self.sel.register(self.get_signal, selectors.EVENT_READ, data='signal')
     self.sel.register(self.sock, selectors.EVENT_READ, data=None)
     self._log(f'Listening at {self.addr[0]}:{self.addr[1]}')
     self.conns = {}
@@ -89,6 +90,7 @@ class ServerSocket:
     try:
       self.conns[addr].sendbufs.append(
           buffers.SendBuffer(*data, maxsize=maxsize))
+      os.write(self.set_signal, bytes(1))
     except KeyError:
       self._log('Dropping message to disconnected client')
 
@@ -101,38 +103,38 @@ class ServerSocket:
     [conn.sock.close() for conn in self.conns.values()]
     self.sock.close()
     self.sel.close()
+    os.close(self.get_signal)
+    os.close(self.set_signal)
 
   def _loop(self):
+    writing = False
     try:
       while self.running or self._numsending():
-        idle = True
-        writeable = []
         for key, mask in self.sel.select(timeout=0.2):
-          if key.data is None and self.reading:
+          if key.data == 'signal':
+            writing = True
+            os.read(self.get_signal, 1)
+          elif key.data is None and self.reading:
             assert mask & selectors.EVENT_READ
             self._accept(key.fileobj)
-            idle = False
           elif mask & selectors.EVENT_READ and self.reading:
             self._recv(key.data)
-            idle = False
-          elif mask & selectors.EVENT_WRITE:
-            writeable.append(key.data)
-        for conn in writeable:
-          if not conn.sendbufs:
-            continue
+        if not writing:
+          continue
+        pending = [conn for conn in self.conns.values() if conn.sendbufs]
+        for conn in pending:
           try:
             conn.sendbufs[0].send(conn.sock)
-            idle = False
             if conn.sendbufs[0].done():
               conn.sendbufs.popleft()
+              if not any(conn.sendbufs for conn in pending):
+                writing = False
           except BlockingIOError:
             pass
           except ConnectionResetError:
-            # The client is gone but we may have buffered messages left to
-            # read, so we keep the socket open until recv() fails.
+            # The client is gone but we may have buffered messages left
+            # to read, so we keep the socket open until recv() fails.
             pass
-        if idle and self.options.idle_sleep:
-          time.sleep(self.options.idle_sleep)
     except Exception as e:
       self.error = e
 
@@ -141,8 +143,7 @@ class ServerSocket:
     self._log(f'Accepted connection from {addr[0]}:{addr[1]}')
     sock.setblocking(False)
     conn = Connection(sock, addr)
-    self.sel.register(
-        sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=conn)
+    self.sel.register(sock, selectors.EVENT_READ, data=conn)
     self.conns[addr] = conn
 
   def _recv(self, conn):

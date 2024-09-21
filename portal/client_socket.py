@@ -1,5 +1,6 @@
 import collections
 import dataclasses
+import os
 import queue
 import select
 import socket
@@ -30,7 +31,6 @@ class Options:
   logging: bool = True
   logging_color: str = 'yellow'
   connect_wait: float = 0.1
-  idle_sleep: float = 0.0001
 
 
 class ClientSocket:
@@ -52,6 +52,7 @@ class ClientSocket:
     self.wantconn = threading.Event()
     self.sendq = collections.deque()
     self.recvq = queue.Queue()
+    self.get_signal, self.set_signal = os.pipe()
 
     self.running = True
     self.thread = thread.Thread(self._loop, name=f'{name}Loop')
@@ -76,6 +77,7 @@ class ClientSocket:
     self.require_connection(timeout)
     maxsize = self.options.max_msg_size
     self.sendq.append(buffers.SendBuffer(*data, maxsize=maxsize))
+    os.write(self.set_signal, bytes(1))
 
   def recv(self, timeout=None):
     assert self.running
@@ -98,6 +100,8 @@ class ClientSocket:
     self.running = False
     self.thread.join(timeout)
     self.thread.kill()
+    os.close(self.get_signal)
+    os.close(self.set_signal)
 
   def require_connection(self, timeout):
     if self.connected:
@@ -111,7 +115,9 @@ class ClientSocket:
     recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     sock = None
     poll = select.poll()
+    poll.register(self.get_signal, select.POLLIN)
     isconn = False  # Local mirror of self.isconn without the lock.
+    writing = False
 
     while self.running or (self.sendq and isconn):
 
@@ -121,7 +127,7 @@ class ClientSocket:
         sock = self._connect()
         if not sock:
           break
-        poll.register(sock, select.POLLIN | select.POLLOUT)
+        poll.register(sock, select.POLLIN)
         self.isconn.set()
         isconn = True
         if not self.options.autoconn:
@@ -130,36 +136,37 @@ class ClientSocket:
 
       try:
 
-        idle = True
-        pairs = poll.poll(0.2)
-        if pairs:
-          _, mask = pairs[0]
+        if not writing:
+          fds = [fd for fd, _ in poll.poll(0.2)]
+          if self.get_signal in fds:
+            writing = True
+            os.read(self.get_signal, 1)
 
-          if mask & select.POLLIN:
-            try:
-              recvbuf.recv(sock)
-              idle = False
-              if recvbuf.done():
-                if self.recvq.qsize() > self.options.max_recv_queue:
-                  raise RuntimeError('Too many incoming messages enqueued')
-                msg = recvbuf.result()
-                self.recvq.put(msg)
-                [x(msg) for x in self.callbacks_recv]
-                recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
-            except BlockingIOError:
-              pass
+        try:
+          recvbuf.recv(sock)
+          if recvbuf.done():
+            if self.recvq.qsize() > self.options.max_recv_queue:
+              raise RuntimeError('Too many incoming messages enqueued')
+            msg = recvbuf.result()
+            self.recvq.put(msg)
+            [x(msg) for x in self.callbacks_recv]
+            recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
+        except BlockingIOError:
+          pass
 
-          if self.sendq and mask & select.POLLOUT:
-            try:
-              self.sendq[0].send(sock)
-              idle = False
-              if self.sendq[0].done():
-                self.sendq.popleft()
-            except BlockingIOError:
-              pass
-
-        if idle and self.options.idle_sleep:
-          time.sleep(self.options.idle_sleep)
+        if self.sendq:
+          try:
+            self.sendq[0].send(sock)
+            if self.sendq[0].done():
+              self.sendq.popleft()
+              if not self.sendq:
+                writing = False
+          except BlockingIOError:
+            pass
+          except ConnectionResetError:
+            # The server is gone but we may have buffered messages left to
+            # read, so we keep the socket open until recv() fails.
+            pass
 
       except OSError as e:
         detail = f'{type(e).__name__}'
