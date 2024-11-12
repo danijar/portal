@@ -238,9 +238,7 @@ class ClientSocket:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
-        sock.setsockopt(
-            socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT,
-            1000 * (after + every * fails))
+        sock.settimeout((after + every * fails) / 1000)
       if sys.platform == 'darwin':
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every)
