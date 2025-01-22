@@ -45,7 +45,7 @@ def server():
 
 def client():
   import portal
-  client = portal.Client('localhost', 2222)
+  client = portal.Client('localhost:2222')
   future = client.add(12, 42)
   result = future.result()
   print(result)  # 54
