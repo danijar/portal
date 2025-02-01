@@ -168,3 +168,5 @@ class Server:
       # Wait until the error is delivered to the client and then raise.
       self.close(internal=True)
       raise RuntimeError(message)
+    else:
+      print(f'Error in server method: {message}')

@@ -17,7 +17,7 @@ class SendBuffer:
     assert all(len(x) for x in buffers)
     assert 1 <= length, length
     assert not maxsize or length <= length, (length, maxsize)
-    lenbuf = length.to_bytes(4, 'little', signed=False)
+    lenbuf = length.to_bytes(8, 'little', signed=False)
     self.buffers = [lenbuf, *buffers]
     self.remaining = collections.deque(self.buffers)
     self.pos = 0
@@ -64,10 +64,10 @@ class RecvBuffer:
 
   def recv(self, sock):
     if self.buffer is None:
-      part = sock.recv(4 - len(self.lenbuf))
+      part = sock.recv(8 - len(self.lenbuf))
       self.lenbuf += part
       size = len(part)
-      if len(self.lenbuf) == 4:
+      if len(self.lenbuf) == 8:
         length = int.from_bytes(self.lenbuf, 'little', signed=False)
         assert 1 <= length <= self.maxsize, (1, length, self.maxsize)
         # We use Numpy to allocate uninitialized memory because Python's
