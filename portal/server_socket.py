@@ -16,6 +16,7 @@ class Connection:
     self.sock = sock
     self.addr = addr
     self.recvbuf = None
+    self.handshake = False
     self.sendbufs = collections.deque()
 
   def fileno(self):
@@ -32,6 +33,7 @@ class Options:
   max_send_queue: int = 4096
   logging: bool = True
   logging_color: str = 'blue'
+  handshake: str = 'portal_handshake'
 
 
 class ServerSocket:
@@ -157,11 +159,20 @@ class ServerSocket:
       # - TimeoutError: [Errno 110] Connection timed out
       self._disconnect(conn, e)
       return
-    if conn.recvbuf.done():
-      if self.recvq.qsize() > self.options.max_recv_queue:
-        raise RuntimeError('Too many incoming messages enqueued')
-      self.recvq.put((conn.addr, conn.recvbuf.result()))
-      conn.recvbuf = None
+    if not conn.recvbuf.done():
+      return
+    if self.recvq.qsize() > self.options.max_recv_queue:
+      raise RuntimeError('Too many incoming messages enqueued')
+    message = conn.recvbuf.result()
+    conn.recvbuf = None
+    if not conn.handshake:
+      if message != self.options.handshake.encode('utf-8'):
+        e = ValueError(f"Handshake '{self.options.handshake}' expected")
+        self._disconnect(conn, e)
+        return
+      conn.handshake = True
+    else:
+      self.recvq.put((conn.addr, message))
 
   def _disconnect(self, conn, e):
     detail = f'{type(e).__name__}'

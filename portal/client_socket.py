@@ -31,6 +31,7 @@ class Options:
   logging: bool = True
   logging_color: str = 'yellow'
   connect_wait: float = 0.1
+  handshake: str = 'portal_handshake'
 
 
 class ClientSocket:
@@ -205,8 +206,9 @@ class ClientSocket:
       try:
         sock.settimeout(10)
         sock.connect(addr)
-        sock.settimeout(0)
         self._log('Connection established')
+        self._send_handshake(sock)
+        sock.settimeout(0)
         return sock
       except TimeoutError as e:
         error = e
@@ -249,6 +251,11 @@ class ClientSocket:
         sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
 
     return sock
+
+  def _send_handshake(self, sock):
+    buf = buffers.SendBuffer(self.options.handshake.encode('utf-8'))
+    while not buf.done():
+      buf.send(sock)
 
   def _log(self, *args):
     if not self.options.logging:

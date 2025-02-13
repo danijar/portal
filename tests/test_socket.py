@@ -193,3 +193,14 @@ class TestSocket:
        portal.Process(server, port),
        portal.Process(client, port),
    ])
+
+  @pytest.mark.parametrize('ipv6', (False, True))
+  def test_wrong_protocol(self, ipv6):
+    port = portal.free_port()
+    server = portal.ServerSocket(port, ipv6=ipv6)
+    client = portal.ClientSocket(
+        port, ipv6=ipv6, autoconn=False, handshake='unknown_word')
+    client.connect()
+    with pytest.raises(portal.Disconnected):
+      client.recv()
+    server.close()
