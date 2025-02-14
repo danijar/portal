@@ -207,7 +207,7 @@ class ClientSocket:
         sock.settimeout(10)
         sock.connect(addr)
         self._log('Connection established')
-        self._send_handshake(sock)
+        sock.sendall(self.options.handshake.encode('utf-8'))
         sock.settimeout(0)
         return sock
       except TimeoutError as e:
@@ -251,11 +251,6 @@ class ClientSocket:
         sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
 
     return sock
-
-  def _send_handshake(self, sock):
-    buf = buffers.SendBuffer(self.options.handshake.encode('utf-8'))
-    while not buf.done():
-      buf.send(sock)
 
   def _log(self, *args):
     if not self.options.logging:

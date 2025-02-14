@@ -16,7 +16,7 @@ class Connection:
     self.sock = sock
     self.addr = addr
     self.recvbuf = None
-    self.handshake = False
+    self.handshake = b''
     self.sendbufs = collections.deque()
 
   def fileno(self):
@@ -44,6 +44,7 @@ class ServerSocket:
       port = int(port.rsplit(':', 1)[-1])
     self.name = name
     self.options = Options(**{**contextlib.context.serverkw, **kwargs})
+    self.handshake = self.options.handshake.encode('utf-8')
     if self.options.ipv6:
       self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
       self.sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
@@ -152,7 +153,11 @@ class ServerSocket:
     if not conn.recvbuf:
       conn.recvbuf = buffers.RecvBuffer(maxsize=self.options.max_msg_size)
     try:
-      conn.recvbuf.recv(conn.sock)
+      if len(conn.handshake) < len(self.handshake):
+        self._handshake(conn)
+        return
+      else:
+        conn.recvbuf.recv(conn.sock)
     except OSError as e:
       # For example:
       # - ConnectionResetError
@@ -163,16 +168,8 @@ class ServerSocket:
       return
     if self.recvq.qsize() > self.options.max_recv_queue:
       raise RuntimeError('Too many incoming messages enqueued')
-    message = conn.recvbuf.result()
+    self.recvq.put((conn.addr, conn.recvbuf.result()))
     conn.recvbuf = None
-    if not conn.handshake:
-      if message != self.options.handshake.encode('utf-8'):
-        e = ValueError(f"Handshake '{self.options.handshake}' expected")
-        self._disconnect(conn, e)
-        return
-      conn.handshake = True
-    else:
-      self.recvq.put((conn.addr, message))
 
   def _disconnect(self, conn, e):
     detail = f'{type(e).__name__}'
@@ -188,6 +185,13 @@ class ServerSocket:
 
   def _numsending(self):
     return sum(len(x.sendbufs) for x in self.conns.values())
+
+  def _handshake(self, conn):
+    assert len(conn.handshake) < len(self.handshake)
+    conn.handshake += conn.sock.recv(len(self.handshake) - len(conn.handshake))
+    if conn.handshake != self.handshake[:len(conn.handshake)]:
+      msg = f"Expected handshake '{self.handshake}' got '{conn.handshake}'"
+      self._disconnect(conn, ValueError(msg))
 
   def _log(self, *args, **kwargs):
     if not self.options.logging:
