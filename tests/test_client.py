@@ -286,6 +286,7 @@ class TestClient:
     port = portal.free_port()
     a = threading.Barrier(2)
     b = threading.Barrier(2)
+    c = threading.Barrier(2)
 
     def server():
       server = Server(port)
@@ -296,10 +297,11 @@ class TestClient:
       stats = server.stats()
       assert stats['numrecv'] == 1
       assert stats['numsend'] == stats['numrecv']
+      b.wait()
       server = Server(port)
       server.bind('fn', lambda x: x)
       server.start(block=False)
-      b.wait()
+      c.wait()
       server.close()
 
     def client():
@@ -310,9 +312,10 @@ class TestClient:
       time.sleep(0.1)
       with pytest.raises(portal.Disconnected):
         client.fn(3).result()
+      b.wait()
       client.connect()
       assert client.fn(3).result() == 3
-      b.wait()
+      c.wait()
       client.close()
 
     portal.run([

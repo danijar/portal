@@ -19,7 +19,8 @@ class BatchServer:
       self, port, name='Server', workers=1, errors=True,
       process=True, shmem=False, **kwargs):
     inner_port = utils.free_port()
-    assert port != inner_port, (port, inner_port)
+    while inner_port == port:
+      inner_port = utils.free_port()
     self.name = name
     self.server = server.Server(inner_port, name, workers, errors, **kwargs)
     if process:
