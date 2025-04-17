@@ -30,7 +30,10 @@ def pack(data):
           "Array is not contiguous in memory. Use " +
           "np.asarray(arr, order='C') before passing the data into pack().")
       specs.append(['array', value.shape, value.dtype.str])
-      buffers.append(value.data.cast('c'))
+      if value.size == 0: 
+        buffers.append(b'\x00')
+      else:
+        buffers.append(value.data.cast('c'))
     elif isinstance(value, sharray.SharedArray):
       specs.append(['sharray', *value.__getstate__()])
       buffers.append(b'\x00')
@@ -64,7 +67,10 @@ def unpack(buffer):
       leaves.append(buffer)
     elif spec[0] == 'array':
       shape, dtype = spec[1:]
-      leaves.append(np.frombuffer(buffer, dtype).reshape(shape))
+      if buffer == b'\x00':
+        leaves.append(np.array([], dtype=dtype))
+      else:
+        leaves.append(np.frombuffer(buffer, dtype).reshape(shape))
     elif spec[0] == 'sharray':
       assert buffer == b'\x00'
       leaves.append(sharray.SharedArray(*spec[1:]))

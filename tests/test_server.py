@@ -370,3 +370,24 @@ class TestServer:
     assert client.fn(42).result() == 42
     client.close()
     server.close()
+
+  @pytest.mark.parametrize('Server', SERVERS)
+  def test_empty_array(self, Server):
+    port = portal.free_port()
+    server = Server(port)
+    
+    def get_empty_array():
+      return []
+    server.bind('get_empty_array', get_empty_array)
+    
+    def get_dict_with_empty_array():
+      return {'empty_array': np.array([])}
+    server.bind('get_dict_with_empty_array', get_dict_with_empty_array)
+    
+    server.start(block=False)
+    client = portal.Client(port)
+    assert np.array_equal(client.get_empty_array().result(), np.array([]))
+    assert np.array_equal(client.get_dict_with_empty_array().result()['empty_array'], np.array([]))
+
+    client.close()
+    server.close()

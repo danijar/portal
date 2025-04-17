@@ -14,6 +14,7 @@ class SendBuffer:
     buffers = tuple(
          x.cast('c') if isinstance(x, memoryview) else x for x in buffers)
     length = sum(len(x) for x in buffers)
+    assert all(len(x) for x in buffers)
     assert 1 <= length, length
     assert not maxsize or length <= length, (length, maxsize)
     lenbuf = length.to_bytes(8, 'little', signed=False)
