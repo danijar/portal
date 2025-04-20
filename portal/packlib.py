@@ -67,7 +67,7 @@ def unpack(buffer):
       leaves.append(buffer)
     elif spec[0] == 'array':
       shape, dtype = spec[1:]
-      if buffer == b'\x00':
+      if buffer == b'\x00' and shape == [0]  and dtype == '<f8':
         leaves.append(np.array([], dtype=dtype))
       else:
         leaves.append(np.frombuffer(buffer, dtype).reshape(shape))

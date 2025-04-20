@@ -377,17 +377,23 @@ class TestServer:
     server = Server(port)
     
     def get_empty_array():
-      return []
+      return np.array([])
     server.bind('get_empty_array', get_empty_array)
     
     def get_dict_with_empty_array():
       return {'empty_array': np.array([])}
     server.bind('get_dict_with_empty_array', get_dict_with_empty_array)
+
+    def get_false_array():
+      return np.array([False])
+    server.bind('get_false_array', get_false_array)
     
     server.start(block=False)
     client = portal.Client(port)
+
     assert np.array_equal(client.get_empty_array().result(), np.array([]))
     assert np.array_equal(client.get_dict_with_empty_array().result()['empty_array'], np.array([]))
+    assert np.array_equal(client.get_false_array().result(), np.array([False]))
 
     client.close()
     server.close()
