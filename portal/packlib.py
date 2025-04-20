@@ -1,3 +1,4 @@
+import math
 import struct
 
 import msgpack
@@ -30,7 +31,8 @@ def pack(data):
           "Array is not contiguous in memory. Use " +
           "np.asarray(arr, order='C') before passing the data into pack().")
       specs.append(['array', value.shape, value.dtype.str])
-      buffers.append(value.data.cast('c'))
+      buffer = value.data.cast('c') if value.size else b'\x00'
+      buffers.append(buffer)
     elif isinstance(value, sharray.SharedArray):
       specs.append(['sharray', *value.__getstate__()])
       buffers.append(b'\x00')
@@ -64,6 +66,9 @@ def unpack(buffer):
       leaves.append(buffer)
     elif spec[0] == 'array':
       shape, dtype = spec[1:]
+      if not math.prod(shape):
+        assert buffer == b'\x00'
+        buffer = b''
       leaves.append(np.frombuffer(buffer, dtype).reshape(shape))
     elif spec[0] == 'sharray':
       assert buffer == b'\x00'

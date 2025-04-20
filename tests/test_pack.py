@@ -10,6 +10,7 @@ class TestPack:
       bytes(7),
       {'foo': np.zeros((2, 4), np.float64), 'bar': np.asarray(1)},
       {'foo': [np.asarray(1), np.asarray(2)]},
+      {'foo': np.ones((128, 0, 5), np.int32)},
       'hello world',
       None,
   ])
