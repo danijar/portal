@@ -5,25 +5,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     strategy:
       fail-fast: False
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-    - uses: actions/checkout@v2
-    - name: Install Python
-      uses: actions/setup-python@v2
+    - uses: actions/checkout@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -r requirements.txt
-        python -m pip install pytest
-    - name: Run tests
-      run: |
-        python -m pytest tests -vv -s
-    - name: Package installation
-      run: |
-        python -m pip install portal
+    - name: Dependencies
+      run: uv sync
+    - name: Tests
+      run: uv run --group dev pytest
+    - name: Build
+      run: uv build
+    - name: PyPi
+      run: uv pip install portal

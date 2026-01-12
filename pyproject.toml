@@ -1,5 +1,45 @@
-[tool.pytest.ini_options]
-addopts = ['--strict-config', '-ra']
-pythonpath = ['.']
-testpaths = ['tests']
+[project]
+name = "portal"
+version = "3.7.4"
+description = "Fast and reliable distributed systems in Python"
+readme="README.md"
+license="MIT"
+authors = [{name = "Danijar Hafner", email = "mail@danijar.com"}]
+maintainers = [{name = "Danijar Hafner", email = "mail@danijar.com"}]
+urls = {Homepage = "http://github.com/danijar/portal"}
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.9"
+dependencies = [
+  "cloudpickle",
+  "msgpack",
+  "numpy",
+  "psutil",
+]
 
+[dependency-groups]
+dev = [
+  "ipdb",
+  "neovim",
+  "pytest",
+  "ruff",
+  "ruff",
+  "twine",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "."
+
+[tool.ruff]
+line-length = 79
+indent-width = 4
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "single"

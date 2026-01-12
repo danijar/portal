@@ -1,9 +1,20 @@
+# Python
 *.egg-info
 *.py[cod]
-.pytest_cache
-MUJOCO_LOG.TXT
+__pycache__/
+dist/
+build/
+
+# Tools
+.claude/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Mac
+.DS_Store
+
+# Typos
 [';:]
 \[
 \]
-__pycache__/
-dist

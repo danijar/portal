@@ -1,5 +1,3 @@
-__version__ = '3.7.3'
-
 import multiprocessing as mp
 try:
   mp.set_start_method('spawn')
