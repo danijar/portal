@@ -12,6 +12,7 @@ from .contextlib import setup
 
 from .thread import Thread
 from .process import Process
+from .futures import Future
 
 from .server_socket import ServerSocket
 from .client_socket import ClientSocket
@@ -30,3 +31,5 @@ from .sharray import SharedArray
 from .utils import free_port
 from .utils import proc_alive
 from .utils import run
+
+from . import futures

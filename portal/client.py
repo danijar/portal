@@ -6,6 +6,7 @@ import time
 import weakref
 
 from . import client_socket
+from . import futures
 from . import packlib
 
 
@@ -81,8 +82,7 @@ class Client:
         name = method.encode('utf-8')
         strlen = len(name).to_bytes(8, 'little', signed=False)
         sendargs = (reqnum, strlen, name, *packlib.pack(data))
-        rai = [False]
-        future = Future(rai)
+        future = futures.Future()
         future.sendargs = sendargs
         self.futures[reqnum] = future
         # Store future before sending request because the response may come fast
@@ -145,55 +145,3 @@ class Client:
         weakref.finalize(
             future, lambda: (None if rai[0] else self.errors.append(e))
         )
-
-
-class Future:
-    def __init__(self, rai):
-        assert rai == [False]
-        self.rai = rai
-        self.con = threading.Condition()
-        self.don = False
-        self.res = None
-        self.err = None
-
-    def __repr__(self):
-        if not self.done:
-            info = 'done=False'
-        elif self.err:
-            info = f"done=True', error='{self.err}' raised={self.rai[0]}"
-        else:
-            info = 'done=True'
-        return f'Future({info})'
-
-    def wait(self, timeout=None):
-        if self.don:
-            return self.don
-        with self.con:
-            return self.con.wait(timeout)
-
-    def done(self):
-        return self.don
-
-    def result(self, timeout=None):
-        if not self.wait(timeout):
-            raise TimeoutError
-        assert self.don
-        if self.err is None:
-            return self.res
-        if not self.rai[0]:
-            self.rai[0] = True
-            raise self.err
-
-    def set_result(self, result):
-        assert not self.don
-        self.don = True
-        self.res = result
-        with self.con:
-            self.con.notify_all()
-
-    def set_error(self, e):
-        assert not self.don
-        self.don = True
-        self.err = e
-        with self.con:
-            self.con.notify_all()
