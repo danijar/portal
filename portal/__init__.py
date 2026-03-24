@@ -1,8 +1,9 @@
 import multiprocessing as mp
+
 try:
-  mp.set_start_method('spawn')
+    mp.set_start_method('spawn')
 except RuntimeError:
-  pass
+    pass
 
 from .contextlib import context
 from .contextlib import initfn
