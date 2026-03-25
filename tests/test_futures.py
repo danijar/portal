@@ -23,22 +23,39 @@ class TestFutures:
             future.result()
         assert e.value.args[0] == 'foo'
 
-    def test_waitfn(self):
-        result = [None]
+    def test_callback(self):
+        called = [False]
 
-        def waitfn(future, timeout):
-            assert timeout == 0
-            if result[0]:
-                if not future.done():
-                    future.set_result(result[0])
+        def fn(future):
+            called[0] = True
 
-        future = portal.Future(waitfn)
+        future = portal.Future()
+        future.add_callback(fn)
         assert not future.wait(timeout=0)
         assert not future.done()
-        result[0] = 42
+        assert called[0] is False
+        future.set_result(42)
         assert future.wait(timeout=0)
         assert future.done()
         assert future.result() == 42
+        assert called[0] is True
+
+    def test_callback_chain(self):
+        inner = portal.Future()
+        outer = portal.Future()
+
+        def callback(future):
+            outer.set_result(future.result() + 1)
+
+        inner.add_callback(callback)
+
+        assert not inner.done()
+        assert not outer.done()
+        inner.set_result(42)
+        assert inner.done()
+        assert inner.result() == 42
+        assert outer.done()
+        assert outer.result() == 43
 
     def test_wait_completed(self):
         futures = [portal.Future() for _ in range(5)]

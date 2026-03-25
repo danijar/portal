@@ -1,6 +1,6 @@
 [project]
 name = "portal"
-version = "3.8.0"
+version = "3.8.1"
 description = "Fast and reliable distributed systems in Python"
 readme="README.md"
 license="MIT"

@@ -2,20 +2,19 @@ import threading
 
 
 class Future:
-    def __init__(self, waitfn=None):
+    def __init__(self):
         self.rai = [False]
-        self.waitfn = waitfn
-        self.waiters = set()
+        self.fns = []
         self.con = threading.Condition()
         self.don = False
         self.res = None
         self.err = None
 
     def __repr__(self):
-        if not self.done:
+        if not self.don:
             info = 'done=False'
         elif self.err:
-            info = f"done=True', error='{self.err}' raised={self.rai[0]}"
+            info = f"done=True, error='{self.err}' raised={self.rai[0]}"
         else:
             info = 'done=True'
         return f'Future({info})'
@@ -23,15 +22,14 @@ class Future:
     def wait(self, timeout=None):
         if self.don:
             return self.don
-        if self.waitfn:
-            self.waitfn(self, timeout)
-            return self.done()
-        else:
-            with self.con:
-                return self.con.wait(timeout)
+        with self.con:
+            return self.con.wait(timeout)
 
     def done(self):
         return self.don
+
+    def error(self):
+        return self.err
 
     def result(self, timeout=None):
         if not self.wait(timeout):
@@ -44,22 +42,31 @@ class Future:
             raise self.err
 
     def set_result(self, result):
-        assert not self.don
-        self.don = True
-        self.res = result
-        for waiter in self.waiters:
-            waiter(self, error=False)
         with self.con:
+            assert not self.don
+            self.don = True
+            self.res = result
+            for fn in self.fns:
+                fn(self)
             self.con.notify_all()
 
     def set_error(self, e):
-        assert not self.don
-        self.don = True
-        self.err = e
-        for waiter in self.waiters:
-            waiter(self, error=True)
         with self.con:
+            assert not self.don
+            self.don = True
+            self.err = e
+            for fn in self.fns:
+                fn(self)
             self.con.notify_all()
+
+    def add_callback(self, fn):
+        with self.con:
+            self.fns.append(fn)
+            if self.don:
+                fn(self)
+
+    def remove_callback(self, fn):
+        self.fns.remove(fn)
 
 
 def wait(futures, timeout=None, amount=None):
@@ -67,10 +74,10 @@ def wait(futures, timeout=None, amount=None):
         amount = len(futures)
     waiter = _Waiter(amount)
     for future in futures:
-        future.waiters.add(waiter)
+        future.add_callback(waiter)
     result = waiter.wait(timeout)
     for future in futures:
-        future.waiters.remove(waiter)
+        future.remove_callback(waiter)
     if result:
         return tuple(waiter.completed)
     else:
@@ -87,8 +94,7 @@ class _Waiter:
     def wait(self, timeout=None):
         return self.event.wait(timeout)
 
-    def __call__(self, future, error):
-        del error
+    def __call__(self, future):
         self.completed.append(future)
         if self.remaining <= 0:
             return
