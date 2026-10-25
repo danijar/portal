@@ -31,6 +31,18 @@ class TestServer:
         client.close()
         server.close()
 
+    def test_addr(self):
+        port = portal.free_port()
+        server = portal.Server(port)
+        server.bind('fn', lambda addr, x: (addr, x), addr=True)
+        server.start(block=False)
+        client = portal.Client(port)
+        (host, _), x = client.call('fn', 42).result()
+        assert host == '127.0.0.1'
+        assert x == 42
+        client.close()
+        server.close()
+
     @pytest.mark.parametrize('Server', SERVERS)
     def test_server_scope(self, Server):
         def fn(data):
