@@ -43,6 +43,19 @@ class TestServer:
         client.close()
         server.close()
 
+    def test_connections(self):
+        port = portal.free_port()
+        server = portal.Server(port)
+        server.bind('fn', lambda addr: addr, addr=True)
+        server.start(block=False)
+        client = portal.Client(port)
+        addr = tuple(client.call('fn').result())
+        assert server.connections == (addr,)
+        client.close()
+        time.sleep(0.2)
+        assert server.connections == ()
+        server.close()
+
     @pytest.mark.parametrize('Server', SERVERS)
     def test_server_scope(self, Server):
         def fn(data):

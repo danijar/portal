@@ -4,13 +4,13 @@ import os
 import queue
 import select
 import socket
-import sys
 import threading
 import time
 
 from . import buffers
 from . import contextlib
 from . import thread
+from . import utils
 
 
 class Disconnected(Exception):
@@ -238,30 +238,7 @@ class ClientSocket:
         after = self.options.keepalive_after
         every = self.options.keepalive_every
         fails = self.options.keepalive_fails
-        if after and every and fails:
-            if sys.platform == 'linux':
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
-                sock.setsockopt(
-                    socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every
-                )
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
-                if hasattr(socket, 'TCP_USER_TIMEOUT'):  # Linux
-                    sock.setsockopt(
-                        socket.IPPROTO_TCP,
-                        socket.TCP_USER_TIMEOUT,
-                        1000 * (after + every * fails),
-                    )
-            if sys.platform == 'darwin':
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                sock.setsockopt(
-                    socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, every
-                )
-            if sys.platform == 'win32':
-                sock.ioctl(
-                    socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000)
-                )
-
+        utils.set_keepalive(sock, after, every, fails)
         return sock
 
     def _log(self, *args):

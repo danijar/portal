@@ -8,6 +8,7 @@ import socket
 from . import buffers
 from . import contextlib
 from . import thread
+from . import utils
 
 
 class Connection:
@@ -32,6 +33,9 @@ class Options:
     logging: bool = True
     logging_color: str = 'blue'
     handshake: str = 'portal_handshake'
+    keepalive_after: float = 10
+    keepalive_every: float = 10
+    keepalive_fails: int = 10
 
 
 class ServerSocket:
@@ -133,7 +137,7 @@ class ServerSocket:
                                 writing = False
                     except BlockingIOError:
                         pass
-                    except ConnectionResetError:
+                    except OSError:
                         # The client is gone but we may have buffered messages left
                         # to read, so we keep the socket open until recv() fails.
                         pass
@@ -144,6 +148,10 @@ class ServerSocket:
         sock, addr = sock.accept()
         self._log(f'Accepted connection from {addr[0]}:{addr[1]}')
         sock.setblocking(False)
+        after = self.options.keepalive_after
+        every = self.options.keepalive_every
+        fails = self.options.keepalive_fails
+        utils.set_keepalive(sock, after, every, fails)
         conn = Connection(sock, addr)
         self.sel.register(sock, selectors.EVENT_READ, data=conn)
         self.conns[addr] = conn

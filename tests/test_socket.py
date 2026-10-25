@@ -1,3 +1,5 @@
+import socket
+import sys
 import time
 
 import pytest
@@ -72,6 +74,22 @@ class TestSocket:
         time.sleep(0.2)
         with pytest.raises(portal.Disconnected):
             client.send(b'bar')
+
+    def test_keepalive(self):
+        port = portal.free_port()
+        server = portal.ServerSocket(port, keepalive_after=2)
+        client = portal.ClientSocket(port)
+        client.send(b'foo')
+        assert server.recv()[1] == b'foo'
+        sock = server.conns[server.connections[0]].sock
+        linux = sys.platform == 'linux'
+        idle = socket.TCP_KEEPIDLE if linux else socket.TCP_KEEPALIVE
+        assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE)
+        assert sock.getsockopt(socket.IPPROTO_TCP, idle) == 2
+        assert sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL) == 10
+        assert sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT) == 10
+        server.close()
+        client.close()
 
     @pytest.mark.parametrize('repeat', range(5))
     def test_disconnect_client(self, repeat):

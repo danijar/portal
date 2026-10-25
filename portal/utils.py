@@ -122,6 +122,29 @@ def free_port():
     return port
 
 
+def set_keepalive(sock, after, every, fails):
+    if not (after and every and fails):
+        return
+    if sys.platform == 'linux':
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, after)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
+        if hasattr(socket, 'TCP_USER_TIMEOUT'):  # Linux
+            sock.setsockopt(
+                socket.IPPROTO_TCP,
+                socket.TCP_USER_TIMEOUT,
+                1000 * (after + every * fails),
+            )
+    if sys.platform == 'darwin':
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, after)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, every)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, fails)
+    if sys.platform == 'win32':
+        sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, after * 1000, every * 1000))
+
+
 def style(color=None, background=None, bold=None, underline=None, reset=None):
     if not sys.stdout.isatty():
         return ''

@@ -25,6 +25,10 @@ class Server:
         self.metrics = dict(send=0, recv=0, time=time.time())
         self.pools = [self.pool, self.postfn_pool]
 
+    @property
+    def connections(self):
+        return self.socket.connections
+
     def bind(self, name, workfn, postfn=None, workers=0, addr=False):
         assert not self.running
         assert name not in self.methods, name
