@@ -1,3 +1,4 @@
+import os
 import socket
 import sys
 import time
@@ -30,6 +31,21 @@ class TestSocket:
         assert data == b'foobarbaz'
         server.send(addr, b'ab', b'c')
         assert client.recv() == b'abc'
+        server.close()
+        client.close()
+
+    def test_no_busy_wait(self):
+        port = portal.free_port()
+        server = portal.ServerSocket(port)
+        client = portal.ClientSocket(port)
+        client.connect()
+        client.sendq.append(portal.buffers.SendBuffer(b'foo'))
+        assert server.recv()[1] == b'foo'
+        os.write(client.set_signal, bytes(1))
+        time.sleep(0.5)
+        start = time.process_time()
+        time.sleep(1)
+        assert time.process_time() - start < 0.5
         server.close()
         client.close()
 
