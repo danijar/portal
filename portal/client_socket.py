@@ -172,6 +172,8 @@ class ClientSocket:
                         # The server is gone but we may have buffered messages left to
                         # read, so we keep the socket open until recv() fails.
                         pass
+                else:
+                    writing = False
 
             except OSError as e:
                 detail = f'{type(e).__name__}'
